@@ -7,6 +7,7 @@ from src.vector_store import get_vector_store
 from langchain_community.document_loaders import PyPDFLoader
 from src.prompts import build_prompt
 from src.llm import llm
+from src.re_ranker import re_rank_docs
 
 
 app = FastAPI(title="RAG API")
@@ -45,17 +46,23 @@ def ingest_data():
 
 
 @app.post("/ask")
-def ask_question(request: QuestionRequest):
+async def ask_question(request: QuestionRequest):
     
     vector_store = get_vector_store(embeddings)
     retriever = vector_store.as_retriever(search_kwargs={
-            "k": 4,
+            "k": 20,
             # "filter": qdrant_filter
         })
     query = request.question
     docs = retriever.invoke(query)
-    
-    prompt_text = build_prompt(docs=docs, question=request.question)
+    print(f"Retrieved {len(docs)} documents.")
+    re_ranked_docs = await re_rank_docs(query, docs, llm)
+    print(f"Re-ranked to {len(re_ranked_docs)} documents.")
+    print("Top documents after re-ranking:")
+    for i, doc in enumerate(re_ranked_docs):
+        print(f"Document {i+1}: {doc.page_content}")
+
+    prompt_text = build_prompt(docs=re_ranked_docs, question=request.question)
 
     response = cast(LLMResponse, llm.invoke(prompt_text))
     content = response.content
