@@ -1,4 +1,4 @@
-from typing import Any, Mapping, Protocol, cast
+from typing import Any, Mapping, cast
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ class QuestionRequest(BaseModel):
     question: str
 
 
-class LLMResponse(Protocol):
+class LLMResponse(BaseModel):
     content: str | list[str | Mapping[str, Any]]
 
 @app.post("/ingest")
