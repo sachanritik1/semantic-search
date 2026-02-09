@@ -2,13 +2,15 @@ from typing import Any, Mapping, cast
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-from src.embedder import embeddings
-from src.vector_store import get_vector_store
+from app.services.embedder import embeddings
+from app.services.vector_store import get_vector_store
 from langchain_community.document_loaders import PyPDFLoader
-from src.prompts import build_prompt
-from src.llm import llm
-from src.re_ranker import re_rank_docs
-
+from app.services.prompts import build_prompt
+from app.services.re_ranker import re_rank_docs
+from app.services.chunker import text_splitter
+from fastapi import Depends
+from app.dependencies import get_llm_service
+from app.services.llm_service import LLMService
 
 app = FastAPI(title="RAG API")
 
@@ -31,7 +33,6 @@ def ingest_data():
     loader = PyPDFLoader(file_path)
 
     docs = loader.load()
-    from src.chunker import text_splitter
     all_splits = text_splitter.split_documents(docs)
 
     print(f"Total Chunks: {len(all_splits)}\n")
@@ -44,9 +45,11 @@ def ingest_data():
 
     
 
-
 @app.post("/ask")
-async def ask_question(request: QuestionRequest):
+async def ask_question(
+    request: QuestionRequest,
+    llm_service: LLMService = Depends(get_llm_service),
+):
     
     vector_store = get_vector_store(embeddings)
     retriever = vector_store.as_retriever(search_kwargs={
@@ -56,7 +59,7 @@ async def ask_question(request: QuestionRequest):
     query = request.question
     docs = retriever.invoke(query)
     print(f"Retrieved {len(docs)} documents.")
-    re_ranked_docs = await re_rank_docs(query, docs, llm)
+    re_ranked_docs = await re_rank_docs(query, docs, llm_service=llm_service)
     print(f"Re-ranked to {len(re_ranked_docs)} documents.")
     print("Top documents after re-ranking:")
     for i, doc in enumerate(re_ranked_docs):
@@ -64,7 +67,7 @@ async def ask_question(request: QuestionRequest):
 
     prompt_text = build_prompt(docs=re_ranked_docs, question=request.question)
 
-    response = cast(LLMResponse, llm.invoke(prompt_text))
+    response = cast(LLMResponse, llm_service.generate_text(prompt_text))
     content = response.content
 
     if isinstance(content, str):
