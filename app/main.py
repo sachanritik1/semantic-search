@@ -1,7 +1,7 @@
 
 # app/main.py
 
-from app.services.tokenizer import get_tokens
+from app.services.tokenizer import tokenize
 from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -83,5 +83,5 @@ async def ask_question(
 
 @app.post("/tokens/count", response_model=TokenCountResponse)
 def count_tokens_api(request: TokenCountRequest):
-    tokens = get_tokens(request.text)
+    tokens = tokenize(request.text)
     return TokenCountResponse(token_count=len(tokens), tokens=tokens)
