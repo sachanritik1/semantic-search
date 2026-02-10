@@ -18,16 +18,24 @@ class GeminiLLM(BaseLLM):
         
     ) -> LLMResponse:
 
-        response = self.client.models.generate_content(
+        response = self.client.models.generate_content( # type: ignore
             model=self.model,
             contents=prompt,
         )
 
         if not response or response.text is None:
             raise ValueError("No text returned from Gemini API")
-
+        
+        usage = None
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            usage = {
+                "prompt_tokens": response.usage_metadata.prompt_token_count,
+                "completion_tokens": response.usage_metadata.candidates_token_count,
+                "total_tokens": response.usage_metadata.total_token_count,
+            }
         return LLMResponse(
             content=response.text,
             model=self.model,
             raw_response=response,
+            usage=usage,
         )

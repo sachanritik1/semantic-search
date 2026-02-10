@@ -1,5 +1,8 @@
-from typing import Any, Mapping, cast
 
+# app/main.py
+
+from app.services.tokenizer import get_tokens
+from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 from fastapi import FastAPI
 from pydantic import BaseModel
 from app.services.embedder import embeddings
@@ -22,9 +25,14 @@ def health():
 class QuestionRequest(BaseModel):
     question: str
 
-
-class LLMResponse(BaseModel):
-    content: str | list[str | Mapping[str, Any]]
+@app.post("/llm/test")
+def test_llm(
+    request: QuestionRequest,
+    llm_service: LLMService = Depends(get_llm_service),
+):
+    response = llm_service.generate_text(request.question)
+    
+    return {"response": response}
 
 @app.post("/ingest")
 def ingest_data():
@@ -67,13 +75,13 @@ async def ask_question(
 
     prompt_text = build_prompt(docs=re_ranked_docs, question=request.question)
 
-    response = cast(LLMResponse, llm_service.generate_text(prompt_text))
+    response = llm_service.generate_text(prompt_text)
     content = response.content
 
-    if isinstance(content, str):
-        # Here: content is guaranteed to be str
-        return content
-    else:
-        # Here: content is guaranteed to be list[str | dict[str, str]]
-        return  "something went wrong"
-    
+    return {"response": content}
+
+
+@app.post("/tokens/count", response_model=TokenCountResponse)
+def count_tokens_api(request: TokenCountRequest):
+    tokens = get_tokens(request.text)
+    return TokenCountResponse(token_count=len(tokens), tokens=tokens)
