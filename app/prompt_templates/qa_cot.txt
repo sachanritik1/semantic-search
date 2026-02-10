@@ -5,7 +5,8 @@ At the end, provide a short final answer.
 Question:
 {{question}}
 
-Reasoning:
+REASONING:
+<reasoning here>
 
-
-Final Answer:
+FINAL_ANSWER:
+<answer here>

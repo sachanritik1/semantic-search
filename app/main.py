@@ -1,6 +1,7 @@
 
 # app/main.py
 
+from app.services.self_consistency import generate_with_self_consistency
 from app.services.tokenizer import tokenize
 from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 from fastapi import FastAPI
@@ -110,3 +111,16 @@ async def test_prompt(
         return {"response": response}
     except Exception as e:
         return {"error": str(e)}        
+
+
+@app.post("/self-consistency")
+async def self_consistency_test(
+    request: QuestionRequest,
+    llm_service: LLMService = Depends(get_llm_service),
+):
+    final_answer = await generate_with_self_consistency(
+        llm_service=llm_service,
+        prompt=request.question,
+        runs=5,
+    )
+    return {"final_answer": final_answer}   

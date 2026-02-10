@@ -2,6 +2,8 @@
 
 from app.llm.base import BaseLLM, LLMResponse
 from google import genai
+from google.genai import types
+
 
 
 class GeminiLLM(BaseLLM):
@@ -21,6 +23,10 @@ class GeminiLLM(BaseLLM):
         response = self.client.models.generate_content( # type: ignore
             model=self.model,
             contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            ),
         )
 
         if not response or response.text is None:
