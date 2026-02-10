@@ -1,0 +1,11 @@
+Answer the question step by step.
+Think through the problem carefully.
+At the end, provide a short final answer.
+
+Question:
+{{question}}
+
+Reasoning:
+
+
+Final Answer:

@@ -14,11 +14,14 @@ class Settings(BaseSettings):
 
     # Gemini
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     # Langchain
     LANGSMITH_TRACING:str
     LANGSMITH_API_KEY:str
+
+    # Reasoning
+    ENABLE_REASONING: bool = False
 
     class Config:
         env_file = ".env"

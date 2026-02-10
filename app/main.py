@@ -107,6 +107,6 @@ async def test_prompt(
         prompt = render_prompt(template, request.variables)
 
         response = await llm_service.generate_text_async(prompt)
-        return {"response": response.content}
+        return {"response": response}
     except Exception as e:
         return {"error": str(e)}        
