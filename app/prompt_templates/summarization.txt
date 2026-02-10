@@ -1,0 +1,12 @@
+Task: Summarize the following text.
+
+Constraints:
+- Use bullet points
+- Max 5 bullets
+- Max 20 words per bullet
+- No assumptions
+
+Text:
+{{text}}
+
+Summary:

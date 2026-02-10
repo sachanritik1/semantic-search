@@ -14,6 +14,10 @@ from app.services.chunker import text_splitter
 from fastapi import Depends
 from app.dependencies import get_llm_service
 from app.services.llm_service import LLMService
+from app.services.prompt_loader import load_prompt, render_prompt
+from app.dependencies import get_llm_service
+from fastapi import Depends
+from app.services.llm_service import LLMService
 
 app = FastAPI(title="RAG API")
 
@@ -85,3 +89,24 @@ async def ask_question(
 def count_tokens_api(request: TokenCountRequest):
     tokens = tokenize(request.text)
     return TokenCountResponse(token_count=len(tokens), tokens=tokens)
+
+
+
+
+class PromptTestRequest(BaseModel):
+    template: str
+    variables: dict[str, str]
+
+@app.post("/prompt/test")
+async def test_prompt(
+    request: PromptTestRequest,
+    llm_service: LLMService = Depends(get_llm_service),
+):  
+    try:
+        template = load_prompt(request.template)
+        prompt = render_prompt(template, request.variables)
+
+        response = await llm_service.generate_text_async(prompt)
+        return {"response": response.content}
+    except Exception as e:
+        return {"error": str(e)}        

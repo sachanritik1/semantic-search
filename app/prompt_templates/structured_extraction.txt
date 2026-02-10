@@ -1,0 +1,16 @@
+You are extracting structured data.
+
+Return ONLY valid JSON matching this schema:
+{
+  "entities": [
+    {
+      "name": string,
+      "type": string
+    }
+  ]
+}
+
+Text:
+{{text}}
+
+JSON:
