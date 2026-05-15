@@ -1,24 +1,26 @@
 # app/config.py
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
-
 
 class Settings(BaseSettings):
     # Core
-    LLM_PROVIDER: str = Field(default="gemini")
+    LLM_PROVIDER: str = "openrouter"
 
     # OpenAI
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
 
     # Gemini
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3-flash-preview"
 
+    # OpenRouter
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+
     # Langchain
-    LANGSMITH_TRACING:str
-    LANGSMITH_API_KEY:str
+    LANGSMITH_TRACING: bool = True
+    LANGSMITH_API_KEY: str = ""
 
     # Reasoning
     ENABLE_REASONING: bool = False

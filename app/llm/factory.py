@@ -4,6 +4,7 @@ from app.config import settings
 from app.llm.base import BaseLLM
 from app.llm.openai_llm import OpenaiLLM
 from app.llm.gemini_llm import GeminiLLM
+from app.llm.openrouter_llm import OpenRouterLLM
 
 
 def get_llm() -> BaseLLM:
@@ -19,6 +20,12 @@ def get_llm() -> BaseLLM:
         return GeminiLLM(
             api_key=settings.GEMINI_API_KEY,
             model=settings.GEMINI_MODEL,
+        )
+
+    if provider == "openrouter":
+        return OpenRouterLLM(
+            api_key=settings.OPENROUTER_API_KEY,
+            model=settings.OPENROUTER_MODEL,
         )
 
     raise ValueError(f"Unsupported LLM provider: {provider}")
