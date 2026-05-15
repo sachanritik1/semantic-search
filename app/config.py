@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Reasoning
     ENABLE_REASONING: bool = False
 
+    # Database
+    DATABASE_URL: str = "sqlite:///./docstore.db"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
