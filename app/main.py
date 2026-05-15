@@ -10,7 +10,7 @@ import tempfile
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from app.services.embedder import embeddings
-from app.services.vector_store import get_vector_store, upsert_documents
+from app.services.vector_store import upsert_documents
 from langchain_community.document_loaders import PyPDFLoader
 from app.services.prompts import build_prompt
 from app.services.re_ranker import re_rank_docs
@@ -23,6 +23,7 @@ from app.dependencies import get_llm_service
 from fastapi import Depends
 from app.services.llm_service import LLMService
 from app.services.sparse_retriever import SparseRetriever
+from app.services.dense_retriever import DenseRetriever
 from app.services.document_store import init_db, list_chunks, save_documents
 
 app = FastAPI(title="RAG API")
@@ -86,13 +87,9 @@ async def ask_question(
     llm_service: LLMService = Depends(get_llm_service),
 ):
     
-    vector_store = get_vector_store(embeddings)
-    retriever = vector_store.as_retriever(search_kwargs={
-            "k": 20,
-            # "filter": qdrant_filter
-        })
     query = request.question
-    docs = retriever.invoke(query)
+    dense = DenseRetriever(embeddings, default_k=20)
+    docs = dense.retrieve(query)
     print(f"Retrieved {len(docs)} documents.")
     re_ranked_docs = await re_rank_docs(query, docs, llm_service=llm_service)
     print(f"Re-ranked to {len(re_ranked_docs)} documents.")
@@ -164,12 +161,9 @@ async def compare_retrievers(
     - Build a sparse BM25 index over ingested chunks stored in the document store.
     - Return both sets of retrieved items for comparison.
     """
-    vector_store = get_vector_store(embeddings)
-    dense_retriever = vector_store.as_retriever(search_kwargs={
-            "k": request.top_k,
-        })
     query = request.question
-    dense_docs = list(dense_retriever.invoke(query))
+    dense = DenseRetriever(embeddings, default_k=request.top_k)
+    dense_docs = dense.retrieve(query, k=request.top_k)
 
     dense_results = []
     for i, doc in enumerate(dense_docs):
