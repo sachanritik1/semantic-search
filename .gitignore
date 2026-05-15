@@ -3,3 +3,4 @@
 qdrant_storage
 **__pycache__**
 .ipynb_checkpoints
+docstore.db
