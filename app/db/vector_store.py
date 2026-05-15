@@ -8,13 +8,14 @@ COLLECTION_NAME = "test-2"
 
 client = QdrantClient(url=QDRANT_URL)
 
+
 def get_vector_store(embeddings: Embeddings) -> QdrantVectorStore:
     return QdrantVectorStore.from_existing_collection(
-    embedding=embeddings,
-    url=QDRANT_URL,
-    collection_name=COLLECTION_NAME,
-    # force_recreate=True,    # recreate collection if it exists
-)
+        embedding=embeddings,
+        url=QDRANT_URL,
+        collection_name=COLLECTION_NAME,
+        # force_recreate=True,    # recreate collection if it exists
+    )
 
 
 def upsert_documents(embeddings: Embeddings, documents: list[Document]) -> None:
@@ -29,4 +30,3 @@ def upsert_documents(embeddings: Embeddings, documents: list[Document]) -> None:
             url=QDRANT_URL,
             collection_name=COLLECTION_NAME,
         )
-

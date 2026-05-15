@@ -25,20 +25,21 @@ v1 = PromptTemplate(
     Question:
     {question}
     """
-    )
+)
+
 
 class DocumentMetadata(TypedDict, total=False):
     source: str
     page: int | str
     author: str
 
+
 def build_prompt(docs: Sequence[Document], question: str) -> str:
-    
     blocks: list[str] = []
     for i, doc in enumerate(docs, start=1):
-        metadata = cast(DocumentMetadata, doc.metadata) # type: ignore
+        metadata = cast(DocumentMetadata, doc.metadata)  # type: ignore
         blocks.append(
-            f"""<document id="{i}">
+            f"""<document id=\"{i}\">
                 <metadata>
                 source: {metadata.get("source", "unknown")}
                 page: {metadata.get("page", "n/a")}
@@ -49,9 +50,6 @@ def build_prompt(docs: Sequence[Document], question: str) -> str:
                 </content>
                 </document>"""
         )
-    context  = "\n\n".join(blocks)
+    context = "\n\n".join(blocks)
 
-    return v1.format(
-        context=context,
-        question=question
-    )
+    return v1.format(context=context, question=question)

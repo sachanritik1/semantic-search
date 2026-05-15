@@ -1,11 +1,11 @@
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List, Callable
 
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500, chunk_overlap=100,  add_start_index=True,
+    chunk_size=500, chunk_overlap=100, add_start_index=True
 )
+
 
 def sliding_window_chunk(
     text: str,
@@ -41,7 +41,7 @@ def sliding_window_chunk(
     while start < len(tokens):
         end = start + chunk_size
         chunk_tokens = tokens[start:end]
-        chunks.append(detokenize(chunk_tokens).strip()) 
+        chunks.append(detokenize(chunk_tokens).strip())
         start += step
 
-    return chunks 
+    return chunks

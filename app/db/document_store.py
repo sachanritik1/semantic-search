@@ -4,7 +4,7 @@ from typing import Iterable, List, Optional
 
 from langchain_core.documents import Document
 from sqlalchemy import JSON, Integer, String, Text, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.config import settings
 

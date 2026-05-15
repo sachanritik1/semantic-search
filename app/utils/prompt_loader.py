@@ -1,4 +1,4 @@
-# app/services/prompt_loader.py
+# app/utils/prompt_loader.py
 
 from pathlib import Path
 
@@ -11,6 +11,7 @@ def load_prompt(template_name: str) -> str:
     if not path.exists():
         raise ValueError(f"Prompt template not found: {template_name}")
     return path.read_text()
+
 
 def render_prompt(template: str, variables: dict[str, str]) -> str:
     prompt = template

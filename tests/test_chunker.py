@@ -1,8 +1,8 @@
 # tests/test_chunker.py
 
 import pytest
-from app.services.chunker import sliding_window_chunk
-from app.services.tokenizer import tokenize, detokenize
+from app.utils.chunker import sliding_window_chunk
+from app.utils.tokenizer import tokenize, detokenize
 
 def test_sliding_window_overlap():
     text = "A B C D E F G H I"

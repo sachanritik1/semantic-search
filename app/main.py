@@ -1,30 +1,27 @@
 
 # app/main.py
 
-from app.services.self_consistency import generate_with_self_consistency
-from app.services.tokenizer import tokenize
-from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 import os
 import tempfile
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel
-from app.services.embedder import embeddings
-from app.services.vector_store import upsert_documents
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from langchain_community.document_loaders import PyPDFLoader
-from app.services.prompts import build_prompt
-from app.services.re_ranker import re_rank_docs
-from app.services.chunker import text_splitter
-from fastapi import Depends
+from pydantic import BaseModel
+
+from app.db.document_store import init_db, list_chunks, save_documents
+from app.db.vector_store import upsert_documents
 from app.dependencies import get_llm_service
-from app.services.llm_service import LLMService
-from app.services.prompt_loader import load_prompt, render_prompt
-from app.dependencies import get_llm_service
-from fastapi import Depends
-from app.services.llm_service import LLMService
-from app.services.sparse_retriever import SparseRetriever
+from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 from app.services.dense_retriever import DenseRetriever
-from app.services.document_store import init_db, list_chunks, save_documents
+from app.services.embedder import embeddings
+from app.services.llm_service import LLMService
+from app.services.re_ranker import re_rank_docs
+from app.services.self_consistency import generate_with_self_consistency
+from app.services.sparse_retriever import SparseRetriever
+from app.utils.chunker import text_splitter
+from app.utils.prompt_loader import load_prompt, render_prompt
+from app.utils.prompts import build_prompt
+from app.utils.tokenizer import tokenize
 
 app = FastAPI(title="RAG API")
 

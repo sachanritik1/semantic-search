@@ -4,7 +4,7 @@ from typing import List, Optional
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
-from app.services.vector_store import get_vector_store
+from app.db.vector_store import get_vector_store
 
 
 @dataclass
