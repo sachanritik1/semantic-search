@@ -19,8 +19,8 @@ async def generate_with_self_consistency(
     llm_service: LLMService,
     prompt: str,
     runs: int = 3,
-):
-    answers = []
+) -> str:
+    answers: list[str] = []
 
     for _ in range(runs):
         response = await llm_service.generate_text_async(
