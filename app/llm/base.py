@@ -28,7 +28,7 @@ class BaseLLM(ABC):
         *,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
-       
+        model: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate a response from the LLM.
@@ -49,6 +49,7 @@ class BaseLLM(ABC):
         *,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        model: Optional[str] = None,
     ) -> LLMResponse:
         """
         Default async wrapper for sync LLMs.
@@ -62,5 +63,6 @@ class BaseLLM(ABC):
                 prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                model=model,
             ),
         )

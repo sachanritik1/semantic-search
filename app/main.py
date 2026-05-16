@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from app.config import settings
 from app.db.document_store import init_db, list_chunks, save_documents
 from app.db.vector_store import upsert_documents
-from app.dependencies import get_llm_service
+from app.dependencies import get_llm_service, get_query_enhancer
+from app.services.query_enhancer import QueryEnhancer
 from app.schemas.tokens import TokenCountRequest, TokenCountResponse
 from app.services.dense_retriever import DenseRetriever
 from app.services.embedder import embeddings
@@ -43,6 +44,22 @@ def health():
 
 class QuestionRequest(BaseModel):
     question: str
+
+
+class EnhanceResponse(BaseModel):
+    original: str
+    enhanced: str
+
+
+@app.post("/enhance", response_model=EnhanceResponse)
+def enhance_query(
+    request: QuestionRequest,
+    query_enhancer: QueryEnhancer = Depends(get_query_enhancer),
+):
+    """Rewrite a user query for better retrieval (standalone test endpoint)."""
+    enhanced = query_enhancer.enhance(request.question) or request.question
+    return EnhanceResponse(original=request.question, enhanced=enhanced)
+
 
 @app.post("/llm/test")
 def test_llm(
@@ -88,9 +105,10 @@ async def ingest_data(file: UploadFile = File(...)):
 async def ask_question(
     request: QuestionRequest,
     llm_service: LLMService = Depends(get_llm_service),
+    query_enhancer: QueryEnhancer = Depends(get_query_enhancer),
 ):
-    
-    query = request.question
+    # Enhance the user query before retrieval and reranking
+    query = query_enhancer.enhance(request.question) or request.question
     dense = DenseRetriever(embeddings, default_k=10)
     dense_docs = dense.retrieve(query)
     print(f"Retrieved {len(dense_docs)} dense documents.")
@@ -152,12 +170,17 @@ async def ask_question(
         seen.add(key)
         combined_docs.append(doc)
 
-    prompt_text = build_prompt(docs=combined_docs, question=request.question)
+    # Use the enhanced query when building the final prompt
+    prompt_text = build_prompt(docs=combined_docs, question=query)
 
     response = llm_service.generate_text(prompt_text)
     content = response.content
 
-    return {"response": content}
+    return {
+        "response": content,
+        "original_question": request.question,
+        "enhanced_question": query,
+    }
 
 
 @app.post("/tokens/count", response_model=TokenCountResponse)

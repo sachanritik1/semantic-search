@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "semantic-search"
 
+    # Query enhancement (optional override; defaults to provider model)
+    ENHANCER_MODEL: str | None = None
+
     # Reasoning
     ENABLE_REASONING: bool = False
 

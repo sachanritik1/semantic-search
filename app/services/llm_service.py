@@ -13,6 +13,7 @@ class LLMService:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        model: str | None = None,
       
     ) -> LLMResponse:
         """
@@ -22,6 +23,7 @@ class LLMService:
             prompt,
             temperature=temperature,
             max_tokens=max_tokens,
+            model=model,
         )
 
     async def generate_text_async(
@@ -30,11 +32,13 @@ class LLMService:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        model: str | None = None,
        
     ) -> LLMResponse:
         return await self.llm.generate_async(
             prompt,
             temperature=temperature,
             max_tokens=max_tokens,
+            model=model,
             
         )

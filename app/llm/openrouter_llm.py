@@ -25,9 +25,15 @@ class OpenRouterLLM(BaseLLM):
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
+        use_model = model or self.model
 
-        bound = self.client.bind(temperature=temperature, max_tokens=max_tokens)
+        bound = self.client.bind(
+            model=use_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         response = bound.invoke(prompt)
         content = response.content
         if not content:
@@ -40,7 +46,7 @@ class OpenRouterLLM(BaseLLM):
 
         return LLMResponse(
             content=str(content),
-            model=self.model,
+            model=use_model,
             raw_response=response,
             usage=usage,
         )

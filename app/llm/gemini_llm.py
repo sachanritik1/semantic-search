@@ -17,11 +17,12 @@ class GeminiLLM(BaseLLM):
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
-        
+        model: str | None = None,
     ) -> LLMResponse:
+        use_model = model or self.model
 
         response = self.client.models.generate_content( # type: ignore
-            model=self.model,
+            model=use_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=temperature,
@@ -41,7 +42,7 @@ class GeminiLLM(BaseLLM):
             }
         return LLMResponse(
             content=response.text,
-            model=self.model,
+            model=use_model,
             raw_response=response,
             usage=usage,
         )
