@@ -5,9 +5,11 @@ import os
 import tempfile
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from pydantic import BaseModel
 
+from app.config import settings
 from app.db.document_store import init_db, list_chunks, save_documents
 from app.db.vector_store import upsert_documents
 from app.dependencies import get_llm_service
@@ -28,6 +30,10 @@ app = FastAPI(title="RAG API")
 
 @app.on_event("startup")
 def startup() -> None:
+    if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
+        os.environ.setdefault("LANGCHAIN_PROJECT", "semantic-search")
     init_db()
 
 @app.get("/health")
@@ -85,16 +91,68 @@ async def ask_question(
 ):
     
     query = request.question
-    dense = DenseRetriever(embeddings, default_k=20)
-    docs = dense.retrieve(query)
-    print(f"Retrieved {len(docs)} documents.")
-    re_ranked_docs = await re_rank_docs(query, docs, llm_service=llm_service)
-    print(f"Re-ranked to {len(re_ranked_docs)} documents.")
-    print("Top documents after re-ranking:")
-    for i, doc in enumerate(re_ranked_docs):
-        print(f"Document {i+1}: {doc.page_content}")
+    dense = DenseRetriever(embeddings, default_k=10)
+    dense_docs = dense.retrieve(query)
+    print(f"Retrieved {len(dense_docs)} dense documents.")
+    try:
+        dense_ranked = await re_rank_docs(
+            query,
+            dense_docs,
+            llm_service=llm_service,
+            top_n=5,
+            max_candidates=4,
+            max_doc_chars=200,
+            max_tokens=64,
+            timeout_s=12.0,
+            batch_count=2,
+        )
+    except (TimeoutError, ValueError) as exc:
+        print(f"Dense rerank failed: {exc}")
+        dense_ranked = dense_docs[:5]
 
-    prompt_text = build_prompt(docs=re_ranked_docs, question=request.question)
+    chunks = list_chunks()
+    sparse_docs: list[Document] = []
+    if chunks:
+        texts = [c.content for c in chunks]
+        sparse = SparseRetriever()
+        sparse.build_index(texts)
+        sparse_res = sparse.query(query, top_k=10)
+        for idx, _, _ in sparse_res:
+            chunk = chunks[idx]
+            metadata = dict(chunk.meta or {})
+            metadata.setdefault("source", chunk.source)
+            metadata.setdefault("chunk_index", chunk.chunk_index)
+            sparse_docs.append(Document(page_content=chunk.content, metadata=metadata))
+    print(f"Retrieved {len(sparse_docs)} sparse documents.")
+    if sparse_docs:
+        try:
+            sparse_ranked = await re_rank_docs(
+                query,
+                sparse_docs,
+                llm_service=llm_service,
+                top_n=5,
+                max_candidates=4,
+                max_doc_chars=200,
+                max_tokens=64,
+                timeout_s=12.0,
+                batch_count=2,
+            )
+        except (TimeoutError, ValueError) as exc:
+            print(f"Sparse rerank failed: {exc}")
+            sparse_ranked = sparse_docs[:5]
+    else:
+        sparse_ranked = []
+
+    combined_docs: list[Document] = []
+    seen: set[str] = set()
+    for doc in dense_ranked + sparse_ranked:
+        key = doc.page_content.strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        combined_docs.append(doc)
+
+    prompt_text = build_prompt(docs=combined_docs, question=request.question)
 
     response = llm_service.generate_text(prompt_text)
     content = response.content

@@ -21,6 +21,7 @@ class DocumentChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, default=0)
     content: Mapped[str] = mapped_column(Text)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    embedding: Mapped[list[float]] = mapped_column(JSON, default=list)
 
 
 DATABASE_URL = settings.DATABASE_URL
@@ -46,6 +47,7 @@ def save_documents(documents: Iterable[Document]) -> int:
                 chunk_index=chunk_index,
                 content=doc.page_content,
                 meta=metadata,
+                embedding=[],
             )
         )
 

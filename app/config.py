@@ -16,11 +16,14 @@ class Settings(BaseSettings):
 
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    OPENROUTER_MODEL: str = "openai/gpt-oss-120b:free"
 
     # Langchain
     LANGSMITH_TRACING: bool = True
     LANGSMITH_API_KEY: str = ""
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "semantic-search"
 
     # Reasoning
     ENABLE_REASONING: bool = False
