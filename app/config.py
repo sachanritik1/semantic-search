@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./docstore.db"
 
+    # Vector store
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION_NAME: str = "semantic-search"
+
+    # Multi-tenant (single-tenant default)
+    DEFAULT_TENANT_ID: str = "default"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
