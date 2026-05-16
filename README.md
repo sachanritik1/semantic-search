@@ -107,7 +107,27 @@ uvicorn app.main:app --reload
 
 Open interactive docs at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
-### 5. Ingest a document and ask a question
+### 5. Run the web UI (optional)
+
+In a second terminal, start the TanStack Start frontend (proxies API calls to port 8000 in dev):
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) for **Ingest**, **Ask**, and **Tools** pages.
+
+For production builds, set `VITE_API_URL` to your public API origin and add that UI origin to `CORS_ORIGINS` in the API `.env` (default: `http://localhost:3000`).
+
+Example `web/.env`:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+### 6. Ingest a document and ask a question
 
 ```bash
 # Upload a PDF
@@ -169,6 +189,7 @@ Available templates live in `app/prompt_templates/`: `qa_over_context`, `qa_cot`
 ## Project structure
 
 ```
+web/                     # TanStack Start UI (Ingest, Ask, Tools)
 app/
 ├── main.py              # FastAPI app & router registration
 ├── config.py            # Settings (env / .env)
@@ -220,6 +241,7 @@ pytest
 | `ENABLE_REASONING` | `false` | Enable reasoning mode where supported |
 | `LANGSMITH_TRACING` | `true` | Enable LangSmith when API key is set |
 | `DEFAULT_TENANT_ID` | `default` | Tenant namespace for multi-tenant prep |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins allowed to call the API |
 
 ## Roadmap
 

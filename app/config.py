@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Multi-tenant (single-tenant default)
     DEFAULT_TENANT_ID: str = "default"
 
+    # CORS (comma-separated origins for browser clients)
+    CORS_ORIGINS: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
