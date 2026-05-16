@@ -21,8 +21,10 @@ class QueryEnhancer:
             "clearer, more specific, and more likely to retrieve relevant documents. "
             "Preserve the original intent and add clarifying details or synonyms as needed.\n\n"
             f"Original query: \"{query}\"\n\n"
-            "Enhanced query:"
+        
+            "Return the enhanced query only, no other text, symbol or anything else."
         )
+        
 
         response = self.llm_service.generate_text(
             prompt,
