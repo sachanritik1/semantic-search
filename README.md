@@ -225,6 +225,3 @@ pytest
 
 See [docs/improvement-plan.md](docs/improvement-plan.md) for planned improvements: async ingest jobs, persistent sparse indexes, RRF fusion, idempotent upserts, and clearer ingest vs query API boundaries.
 
-## License
-
-Add your license here if applicable.
