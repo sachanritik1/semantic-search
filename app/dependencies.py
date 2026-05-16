@@ -3,6 +3,7 @@
 from fastapi import Depends
 
 from app.llm.factory import get_llm
+from app.services.compare_llm_service import CompareLLMService
 from app.services.compare_service import CompareService
 from app.services.ingest_service import IngestService
 from app.services.llm_service import LLMService
@@ -36,3 +37,13 @@ def get_query_service(
 
 def get_compare_service() -> CompareService:
     return CompareService()
+
+
+def get_compare_llm_service(
+    compare_service: CompareService = Depends(get_compare_service),
+    llm_service: LLMService = Depends(get_llm_service),
+) -> CompareLLMService:
+    return CompareLLMService(
+        compare_service=compare_service,
+        llm_service=llm_service,
+    )
