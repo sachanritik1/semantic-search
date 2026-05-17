@@ -45,7 +45,6 @@ def _coerce_score(value: Any) -> float | None:
 
 
 def _parse_ranked_entries(raw: Any, num_docs: int) -> list[tuple[int, float]]:
-    """Parse LLM output into (1-based doc id, relevance score) pairs, best first."""
     if num_docs <= 0:
         return []
 
@@ -59,9 +58,8 @@ def _parse_ranked_entries(raw: Any, num_docs: int) -> list[tuple[int, float]]:
         entries: list[tuple[int, float]] = []
         for position, item in enumerate(payload):
             doc_id = _coerce_doc_id(item)
-            if doc_id is None:
-                continue
-            entries.append((doc_id, float(max(num_docs - position, 1))))
+            if doc_id is not None:
+                entries.append((doc_id, float(max(num_docs - position, 1))))
         return entries
 
     if all(isinstance(item, dict) for item in payload):
@@ -104,15 +102,12 @@ def _entries_degenerate(entries: list[tuple[int, float]]) -> bool:
 
 
 def _entries_from_fusion(batch_docs: list[Document]) -> list[tuple[int, float]]:
-    """Programmatic ranking using fusion_score when LLM scores are unusable."""
-    scored: list[tuple[float, int, float]] = []
-    for i, doc in enumerate(batch_docs, start=1):
-        meta = doc.metadata or {}
-        fusion = float(meta.get("fusion_score", 0.0))
-        rerank_equiv = round(fusion * 10, 2)
-        scored.append((fusion, i, rerank_equiv))
+    scored = [
+        (float((doc.metadata or {}).get("fusion_score", 0.0)), i)
+        for i, doc in enumerate(batch_docs, start=1)
+    ]
     scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [(doc_id, relevance) for _, doc_id, relevance in scored]
+    return [(i, round(fusion * 10, 2)) for fusion, i in scored]
 
 
 def _select_relevant_entries(
@@ -120,14 +115,14 @@ def _select_relevant_entries(
     top_n: int,
     min_relevance: float,
 ) -> list[tuple[int, float]]:
-    qualified = [(doc_id, score) for doc_id, score in entries if score >= min_relevance]
-    qualified.sort(key=lambda pair: pair[1], reverse=True)
-
+    qualified = sorted(
+        [(doc_id, score) for doc_id, score in entries if score >= min_relevance],
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
     if qualified:
         return qualified[:top_n]
-
-    fallback = sorted(entries, key=lambda pair: pair[1], reverse=True)
-    return fallback[:top_n]
+    return sorted(entries, key=lambda pair: pair[1], reverse=True)[:top_n]
 
 
 def _apply_ranking(
@@ -149,58 +144,52 @@ def _apply_ranking(
             Document(page_content=source.page_content, metadata=metadata)
         )
         if len(ranked) >= top_n:
-            return ranked
+            break
 
     return ranked
 
 
-def _build_document_block(doc: Document, doc_id: int, max_doc_chars: int) -> str:
-    content = doc.page_content
-    if max_doc_chars:
-        content = content[:max_doc_chars]
-
-    meta = doc.metadata or {}
-    fusion = meta.get("fusion_score")
-    dense = meta.get("dense_norm")
-    sparse = meta.get("sparse_norm")
-    hints: list[str] = []
-    if fusion is not None:
-        hints.append(f"retrieval_score={float(fusion):.3f}")
-    if dense is not None:
-        hints.append(f"dense={float(dense):.3f}")
-    if sparse is not None:
-        hints.append(f"sparse={float(sparse):.3f}")
-    hint_str = " ".join(hints)
-
-    return f"""<document id="{doc_id}" {hint_str}>
-{content}
-</document>"""
+def _doc_block(doc: Document, doc_id: int, max_doc_chars: int) -> str:
+    content = doc.page_content[:max_doc_chars] if max_doc_chars else doc.page_content
+    fusion = (doc.metadata or {}).get("fusion_score")
+    score_attr = f' fusion="{float(fusion):.2f}"' if fusion is not None else ""
+    return f'<doc id="{doc_id}"{score_attr}>\n{content}\n</doc>'
 
 
-def _build_rerank_prompt(query: str, blocks: list[str], num_docs: int) -> str:
-    return f"""You rank pre-retrieved document chunks for a RAG system.
+def _rerank_prompt(query: str, blocks: list[str], num_docs: int) -> str:
+    return (
+        f"Score each doc 1-{num_docs} for relevance to the question (1-10, relative ranking).\n"
+        f"Question: {query}\n\n"
+        f"{chr(10).join(blocks)}\n\n"
+        f'Return JSON only, one entry per id: [{{"id":1,"relevance":N}}, ...]'
+    )
 
-These {num_docs} documents were already selected by hybrid search (dense + sparse) as the best matches for the question. Rank them **relative to each other**.
 
-<question>
-{query}
-</question>
-
-<documents>
-Documents:
-{chr(10).join(blocks)}
-</documents>
-
-Instructions:
-1. Read each document and compare it to the question.
-2. Assign relevance 1-10 per id (1=weak match, 10=best match). Use the full range.
-3. Higher retrieval_score usually means a stronger initial match — weigh it but verify against content.
-4. The top documents should typically score 5-10; only use 0-2 for clearly unrelated chunks.
-5. Return exactly {num_docs} objects, ids 1 through {num_docs}.
-
-Output ONLY a JSON array and nothing else. Example:
-[{{"id":1,"relevance":6}},{{"id":2,"relevance":9}}]
-"""
+def _resolve_entries(
+    raw_content: Any,
+    batch_docs: list[Document],
+    top_n: int,
+) -> list[tuple[int, float]]:
+    try:
+        entries = _parse_ranked_entries(raw_content, len(batch_docs))
+        if _entries_degenerate(entries):
+            print(
+                "Rerank scores degenerate (all zero/flat); using fusion_score order."
+            )
+            entries = _entries_from_fusion(batch_docs)
+        return _select_relevant_entries(
+            entries,
+            top_n=top_n,
+            min_relevance=settings.RERANK_MIN_RELEVANCE,
+        )
+    except ValueError as exc:
+        preview = normalize_llm_content(raw_content)
+        print(f"Rerank parse failed: {exc}; raw={preview[:500]!r}")
+        return _select_relevant_entries(
+            _entries_from_fusion(batch_docs),
+            top_n=top_n,
+            min_relevance=0.0,
+        )
 
 
 async def re_rank_docs(
@@ -218,64 +207,37 @@ async def re_rank_docs(
         return RerankResult(docs=[], failed=False)
 
     candidates = docs[:max_candidates] if max_candidates is not None else docs
-    if batch_count < 1:
-        batch_count = 1
-
+    batch_count = max(1, batch_count)
     batch_size = max(1, (len(candidates) + batch_count - 1) // batch_count)
-    batches: list[list[Document]] = [
-        candidates[i : i + batch_size] for i in range(0, len(candidates), batch_size)
-    ]
+    batches = [
+        candidates[i : i + batch_size]
+        for i in range(0, len(candidates), batch_size)
+    ][:batch_count]
 
     async def rerank_batch(batch_docs: list[Document]) -> list[Document]:
         blocks = [
-            _build_document_block(doc, i, max_doc_chars)
+            _doc_block(doc, i, max_doc_chars)
             for i, doc in enumerate(batch_docs, start=1)
         ]
-
-        prompt = _build_rerank_prompt(query, blocks, num_docs=len(batch_docs))
-
-        call = llm_service.generate_text_async(
-            prompt,
-            temperature=0.1,
-            max_tokens=max_tokens,
+        response = await asyncio.wait_for(
+            llm_service.generate_text_async(
+                _rerank_prompt(query, blocks, len(batch_docs)),
+                temperature=0.1,
+                max_tokens=max_tokens,
+            ),
+            timeout=timeout_s,
         )
-        response = await asyncio.wait_for(call, timeout=timeout_s)
-        raw_content = response.content  # type: ignore
-
-        try:
-            entries = _parse_ranked_entries(raw_content, len(batch_docs))
-            if _entries_degenerate(entries):
-                print(
-                    "Rerank scores degenerate (all zero/flat); "
-                    "using fusion_score order."
-                )
-                entries = _entries_from_fusion(batch_docs)
-            selected = _select_relevant_entries(
-                entries,
-                top_n=top_n,
-                min_relevance=settings.RERANK_MIN_RELEVANCE,
-            )
-        except ValueError as exc:
-            preview = normalize_llm_content(raw_content)
-            print(f"Rerank parse failed: {exc}; raw={preview[:500]!r}")
-            entries = _entries_from_fusion(batch_docs)
-            selected = _select_relevant_entries(
-                entries,
-                top_n=top_n,
-                min_relevance=0.0,
-            )
-
+        selected = _resolve_entries(response.content, batch_docs, top_n)
         return _apply_ranking(batch_docs, selected, top_n)
 
     try:
-        ranked_all: list[Document] = []
-        for batch in batches[:batch_count]:
-            ranked_all.extend(await rerank_batch(batch))
-
-        selected = ranked_all[:top_n]
+        ranked: list[Document] = []
+        for batch in batches:
+            ranked.extend(await rerank_batch(batch))
+        selected = ranked[:top_n]
         if not selected:
-            return RerankResult(docs=[], failed=True)
-        return RerankResult(docs=selected, failed=False)
-    except (TimeoutError, ValueError, asyncio.TimeoutError) as exc:
+            print("Rerank returned no documents.")
+        return RerankResult(docs=selected, failed=not selected)
+    except (TimeoutError, asyncio.TimeoutError) as exc:
         print(f"Rerank call failed: {exc}")
         return RerankResult(docs=[], failed=True)
