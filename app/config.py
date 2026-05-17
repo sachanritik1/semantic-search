@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     # CORS (comma-separated origins for browser clients)
     CORS_ORIGINS: str = "http://localhost:3000"
 
+    # Hybrid retrieval / ask pipeline
+    DENSE_WEIGHT: float = 0.5
+    SPARSE_WEIGHT: float = 0.5
+    RETRIEVAL_TOP_K: int = 10
+    FUSION_TOP_K: int = 12
+    RERANK_TOP_K: int = 5
+    RERANK_MIN_RELEVANCE: float = 4.0
+    CONTEXT_MAX_CHARS_HIGH: int = 800
+    CONTEXT_MAX_CHARS_MID: int = 400
+    CONTEXT_MAX_CHARS_LOW: int = 150
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

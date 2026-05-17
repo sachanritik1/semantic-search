@@ -209,10 +209,12 @@ docs/improvement-plan.md # Roadmap toward production hybrid RAG
 ## How `/ask` works
 
 1. **Enhance** — the query enhancer may rewrite the question for clearer retrieval.
-2. **Retrieve** — dense search hits Qdrant; sparse search builds a BM25 index from SQLite chunks.
-3. **Rerank** — each channel’s candidates are scored by the LLM (with timeout fallback to raw order).
-4. **Merge** — results are deduplicated by content and combined.
-5. **Generate** — a prompt is built from context + question and sent to the configured LLM.
+2. **Retrieve** — dense (Qdrant relevance scores) and sparse (BM25) each return top‑K chunks.
+3. **Fuse** — dedupe by `chunk_id`, min–max normalize per channel, then  
+   `fusion_score = DENSE_WEIGHT × dense_norm + SPARSE_WEIGHT × sparse_norm`.
+4. **Rerank** — one LLM pass scores and selects up to `RERANK_TOP_K` chunks; on failure, all fused chunks are used.
+5. **Compress** — tiered truncation by rerank score (high / mid / low char limits).
+6. **Generate** — only the answer-context chunks (rerank-selected, or all fused on rerank failure) go into the prompt.
 
 ## Development
 

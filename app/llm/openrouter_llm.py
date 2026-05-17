@@ -1,7 +1,9 @@
 # app/llm/openrouter_llm.py
 
 from langchain_openai import ChatOpenAI
+
 from app.llm.base import BaseLLM, LLMResponse
+from app.utils.llm_content import normalize_llm_content
 
 
 class OpenRouterLLM(BaseLLM):
@@ -45,7 +47,7 @@ class OpenRouterLLM(BaseLLM):
             usage = metadata["token_usage"]
 
         return LLMResponse(
-            content=str(content),
+            content=normalize_llm_content(content),
             model=use_model,
             raw_response=response,
             usage=usage,

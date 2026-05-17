@@ -17,12 +17,14 @@ class QueryEnhancer:
 
     def enhance(self, query: str) -> str:
         prompt = (
-            "You are a helpful assistant that rewrites user search queries to be "
-            "clearer, more specific, and more likely to retrieve relevant documents. "
-            "Preserve the original intent and add clarifying details or synonyms as needed.\n\n"
+            "Rewrite this search query to improve document retrieval.\n"
+            "Rules:\n"
+            "- Keep the same intent and entities as the original.\n"
+            "- Do not invent facts or assumptions (e.g. do not add 'public figure' "
+            "unless the user said so).\n"
+            "- Add only neutral clarifiers or synonyms useful for search.\n\n"
             f"Original query: \"{query}\"\n\n"
-        
-            "Return the enhanced query only, no other text, symbol or anything else."
+            "Return the enhanced query only, no other text."
         )
         
 
