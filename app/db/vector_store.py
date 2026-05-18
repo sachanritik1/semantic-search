@@ -2,6 +2,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
+from qdrant_client.http import models
 
 from app.config import settings
 
@@ -24,6 +25,18 @@ def _chunk_ids(documents: list[Document]) -> list[str]:
             raise ValueError("Each document must have chunk_id in metadata before upsert")
         ids.append(str(chunk_id))
     return ids
+
+
+def document_id_filter(document_id: str) -> models.Filter:
+    """Filter points by document_id in LangChain Qdrant payload metadata."""
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="metadata.document_id",
+                match=models.MatchValue(value=document_id),
+            )
+        ]
+    )
 
 
 def upsert_documents(embeddings: Embeddings, documents: list[Document]) -> None:

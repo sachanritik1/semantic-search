@@ -23,8 +23,11 @@ export function ingestPdf(file: File) {
 	return apiPostFormData<IngestResponse>("/ingest", formData);
 }
 
-export function ask(question: string) {
-	return apiPostJson<AskResponse>("/ask", { question } satisfies QuestionRequest);
+export function ask(question: string, documentId?: string | null) {
+	return apiPostJson<AskResponse>("/ask", {
+		question,
+		...(documentId ? { document_id: documentId } : {}),
+	} satisfies QuestionRequest);
 }
 
 export function enhance(question: string) {

@@ -1,4 +1,8 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { AskSection } from "#/components/rag/AskSection.tsx";
+import { DocumentScopeBar } from "#/components/rag/DocumentScopeBar.tsx";
+import { IngestSection } from "#/components/rag/IngestSection.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import {
 	Card,
@@ -8,49 +12,60 @@ import {
 	CardTitle,
 } from "#/components/ui/card.tsx";
 import { useHealthQuery } from "#/lib/api/hooks.ts";
+import type { IngestResponse } from "#/lib/api/types.ts";
+import {
+	addIngestedDocument,
+	loadDocumentSession,
+	setActiveDocument,
+	type DocumentSession,
+} from "#/lib/session/documents.ts";
 
 export const Route = createFileRoute("/")({
 	component: HomePage,
 });
 
-const featureCards = [
-	{
-		to: "/ingest" as const,
-		title: "Ingest",
-		description: "Upload a PDF to chunk, embed, and index in Qdrant and SQLite.",
-	},
-	{
-		to: "/ask" as const,
-		title: "Ask",
-		description:
-			"Run the full hybrid RAG pipeline: enhance, retrieve, rerank, and generate.",
-	},
-	{
-		to: "/tools" as const,
-		title: "Tools",
-		description:
-			"Try enhance, token counting, prompt templates, LLM test, and self-consistency.",
-	},
-];
-
 function HomePage() {
 	const health = useHealthQuery();
+	const [session, setSession] = useState<DocumentSession>(() =>
+		loadDocumentSession(),
+	);
+	const [searchAll, setSearchAll] = useState(false);
+
+	useEffect(() => {
+		setSession(loadDocumentSession());
+	}, []);
 
 	const apiOk = health.isSuccess && health.data?.status === "ok";
+	const scopedDocumentId = searchAll ? null : session.activeDocumentId;
+
+	const handleIngested = (result: IngestResponse, source?: string) => {
+		setSession(
+			addIngestedDocument({
+				documentId: result.document_id,
+				source,
+			}),
+		);
+		setSearchAll(false);
+	};
+
+	const handleActiveDocumentChange = (documentId: string | null) => {
+		setSession(setActiveDocument(documentId));
+		setSearchAll(false);
+	};
 
 	return (
-		<div className="page-wrap py-10">
-			<div className="mb-8 space-y-3">
+		<div className="page-wrap space-y-10 py-10">
+			<div className="space-y-3">
 				<p className="island-kicker m-0">Hybrid RAG</p>
-				<h1 className="m-0 font-serif text-3xl font-semibold tracking-tight text-[var(--sea-ink)] sm:text-4xl">
+				<h1 className="m-0 font-serif text-3xl font-semibold tracking-tight text-(--sea-ink) sm:text-4xl">
 					Semantic Search
 				</h1>
-				<p className="m-0 max-w-2xl text-[var(--sea-ink-soft)]">
-					Dense + sparse retrieval over your documents, with an LLM for answers
-					and debugging tools.
+				<p className="m-0 max-w-2xl text-(--sea-ink-soft)">
+					Ingest a PDF, then ask questions scoped to that document. Dense and
+					sparse retrieval filter by the active document id.
 				</p>
 				<div className="flex items-center gap-2">
-					<span className="text-sm text-[var(--sea-ink-soft)]">API status</span>
+					<span className="text-sm text-(--sea-ink-soft)">API status</span>
 					{health.isLoading ? (
 						<Badge variant="secondary">Checking…</Badge>
 					) : apiOk ? (
@@ -65,24 +80,34 @@ function HomePage() {
 				</div>
 			</div>
 
-			<div className="grid gap-4 sm:grid-cols-3">
-				{featureCards.map((card) => (
-					<Link key={card.to} to={card.to} className="no-underline">
-						<Card className="h-full transition hover:border-[var(--lagoon)]/40">
-							<CardHeader>
-								<CardTitle className="text-[var(--sea-ink)]">
-									{card.title}
-								</CardTitle>
-								<CardDescription>{card.description}</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<span className="text-sm font-medium text-[var(--lagoon-deep)]">
-									Open →
-								</span>
-							</CardContent>
-						</Card>
-					</Link>
-				))}
+			<DocumentScopeBar
+				session={session}
+				searchAll={searchAll}
+				onSearchAllChange={setSearchAll}
+				onActiveDocumentChange={handleActiveDocumentChange}
+			/>
+
+			<IngestSection onIngested={handleIngested} />
+
+			<AskSection documentId={scopedDocumentId} searchAll={searchAll} />
+
+			<div className="grid gap-4 sm:grid-cols-1">
+				<Link to="/tools" className="no-underline">
+					<Card className="h-full transition hover:border-(--lagoon)/40">
+						<CardHeader>
+							<CardTitle className="text-(--sea-ink)">Tools</CardTitle>
+							<CardDescription>
+								Try enhance, token counting, prompt templates, LLM test, and
+								self-consistency.
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<span className="text-sm font-medium text-(--lagoon-deep)">
+								Open →
+							</span>
+						</CardContent>
+					</Card>
+				</Link>
 			</div>
 		</div>
 	);

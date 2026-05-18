@@ -131,3 +131,19 @@ def list_chunks(limit: Optional[int] = None, *, active_only: bool = True) -> Lis
         if limit is not None:
             stmt = stmt.limit(limit)
         return list(session.execute(stmt).scalars().all())
+
+
+def list_chunks_for_document(
+    document_id: str,
+    *,
+    active_only: bool = True,
+) -> List[DocumentChunk]:
+    with SessionLocal() as session:
+        stmt = (
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index)
+        )
+        if active_only:
+            stmt = stmt.where(DocumentChunk.status == CHUNK_STATUS_ACTIVE)
+        return list(session.execute(stmt).scalars().all())

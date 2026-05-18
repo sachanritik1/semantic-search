@@ -12,4 +12,7 @@ async def ask_question(
     request: QuestionRequest,
     query_service: QueryService = Depends(get_query_service),
 ):
-    return await query_service.ask(request.question)
+    return await query_service.ask(
+        request.question,
+        document_id=request.document_id,
+    )

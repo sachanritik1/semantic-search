@@ -62,3 +62,19 @@ def test_list_chunks_active_only(isolated_store):
 
     assert isolated_store.list_chunks(active_only=True) == []
     assert len(isolated_store.list_chunks(active_only=False)) == 1
+
+
+def test_list_chunks_for_document_filters_by_document_id(isolated_store):
+    doc_a = new_document_id()
+    doc_b = new_document_id()
+    chunks_a = [Document(page_content="a1", metadata={}), Document(page_content="a2", metadata={})]
+    chunks_b = [Document(page_content="b1", metadata={})]
+    stamp_document_chunks(chunks_a, document_id=doc_a, source="a.pdf")
+    stamp_document_chunks(chunks_b, document_id=doc_b, source="b.pdf")
+    isolated_store.save_documents(chunks_a)
+    isolated_store.save_documents(chunks_b)
+
+    rows = isolated_store.list_chunks_for_document(doc_a)
+    assert len(rows) == 2
+    assert all(row.document_id == doc_a for row in rows)
+    assert [row.chunk_index for row in rows] == [0, 1]

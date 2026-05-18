@@ -1,5 +1,4 @@
 import logging
-import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,6 +61,7 @@ def _build_rerank_trace(
     query: str,
     docs: list[Document],
     entries: list[tuple[int, float]],
+    raw_logits: dict[int, float],
     selected_ids: set[int],
     ranked: list[Document],
     status: str,
@@ -81,6 +81,7 @@ def _build_rerank_trace(
                     "chunk_index": meta.get("chunk_index"),
                     "source": meta.get("source"),
                     "fusion_score": meta.get("fusion_score"),
+                    "rerank_logit": raw_logits.get(doc_id),
                     "rerank_score": score,
                     "selected": doc_id in selected_ids,
                     "content": source.page_content,
@@ -123,8 +124,15 @@ def _get_cross_encoder() -> CrossEncoder:
     return _model
 
 
-def _to_rerank_score(logit: float) -> float:
-    return round(10.0 / (1.0 + math.exp(-logit)), 2)
+def _normalize_scores(raw_logits: list[float]) -> list[float]:
+    """Map cross-encoder logits to 0–10 relative to this candidate batch."""
+    if not raw_logits:
+        return []
+    lo = min(raw_logits)
+    hi = max(raw_logits)
+    if hi == lo:
+        return [5.0] * len(raw_logits)
+    return [round(10.0 * (value - lo) / (hi - lo), 2) for value in raw_logits]
 
 
 def _select_relevant_entries(
@@ -146,6 +154,7 @@ def _apply_ranking(
     candidates: list[Document],
     entries: list[tuple[int, float]],
     top_n: int,
+    raw_logits: dict[int, float],
 ) -> list[Document]:
     seen: set[int] = set()
     ranked: list[Document] = []
@@ -156,6 +165,7 @@ def _apply_ranking(
         seen.add(doc_id)
         source = candidates[doc_id - 1]
         metadata = dict(source.metadata or {})
+        metadata["rerank_logit"] = raw_logits.get(doc_id)
         metadata["rerank_score"] = score
         ranked.append(
             Document(page_content=source.page_content, metadata=metadata)
@@ -169,15 +179,18 @@ def _apply_ranking(
 def _score_candidates(
     query: str,
     candidates: list[Document],
-) -> list[tuple[int, float]]:
+) -> tuple[list[tuple[int, float]], dict[int, float]]:
     pairs = [(query, doc.page_content) for doc in candidates]
     logits = _get_cross_encoder().predict(pairs)
-    scored = sorted(
-        enumerate(logits, start=1),
-        key=lambda item: item[1],
+    raw_list = [float(value) for value in logits]
+    normalized = _normalize_scores(raw_list)
+    raw_by_id = {doc_id: raw for doc_id, raw in enumerate(raw_list, start=1)}
+    entries = sorted(
+        enumerate(normalized, start=1),
+        key=lambda item: raw_by_id[item[0]],
         reverse=True,
     )
-    return [(doc_id, _to_rerank_score(float(logit))) for doc_id, logit in scored]
+    return [(doc_id, score) for doc_id, score in entries], raw_by_id
 
 
 @traceable(
@@ -197,6 +210,7 @@ def re_rank_docs(
                 query=query,
                 docs=[],
                 entries=[],
+                raw_logits={},
                 selected_ids=set(),
                 ranked=[],
                 status="skipped",
@@ -215,9 +229,17 @@ def re_rank_docs(
     )
 
     entries: list[tuple[int, float]] = []
+    raw_logits: dict[int, float] = {}
     selected_ids: set[int] = set()
     try:
-        entries = _score_candidates(query, docs)
+        entries, raw_logits = _score_candidates(query, docs)
+        raw_values = list(raw_logits.values())
+        logger.info(
+            "Rerank raw logits: min=%.3f max=%.3f mean=%.3f",
+            min(raw_values),
+            max(raw_values),
+            sum(raw_values) / len(raw_values),
+        )
         selected = _select_relevant_entries(
             entries,
             top_n=top_n,
@@ -233,7 +255,7 @@ def re_rank_docs(
                 len(selected),
             )
 
-        ranked = _apply_ranking(docs, selected, top_n)
+        ranked = _apply_ranking(docs, selected, top_n, raw_logits)
         if not ranked:
             logger.warning("Rerank failed: no documents after ranking")
             _record_rerank_trace(
@@ -241,6 +263,7 @@ def re_rank_docs(
                     query=query,
                     docs=docs,
                     entries=entries,
+                    raw_logits=raw_logits,
                     selected_ids=selected_ids,
                     ranked=[],
                     status="failed",
@@ -257,6 +280,7 @@ def re_rank_docs(
                 query=query,
                 docs=docs,
                 entries=entries,
+                raw_logits=raw_logits,
                 selected_ids=selected_ids,
                 ranked=ranked,
                 status="fallback" if used_fallback else "success",
@@ -272,6 +296,7 @@ def re_rank_docs(
                 query=query,
                 docs=docs,
                 entries=entries,
+                raw_logits=raw_logits,
                 selected_ids=selected_ids,
                 ranked=[],
                 status="error",

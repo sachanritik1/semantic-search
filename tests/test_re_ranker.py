@@ -1,4 +1,3 @@
-import math
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,35 +6,35 @@ from langchain_core.documents import Document
 from app.services.re_ranker import (
     RerankResult,
     _apply_ranking,
+    _normalize_scores,
     _select_relevant_entries,
-    _to_rerank_score,
     re_rank_docs,
 )
 
 
-def test_to_rerank_score_high_logit_near_ten():
-    assert _to_rerank_score(10.0) == pytest.approx(10.0, abs=0.01)
+def test_normalize_scores_spreads_batch_to_zero_ten():
+    assert _normalize_scores([-5.0, 8.0]) == [0.0, 10.0]
 
 
-def test_to_rerank_score_low_logit_near_zero():
-    assert _to_rerank_score(-10.0) == pytest.approx(0.0, abs=0.01)
+def test_normalize_scores_identical_logits_are_neutral():
+    assert _normalize_scores([1.0, 1.0, 1.0]) == [5.0, 5.0, 5.0]
 
 
-def test_to_rerank_score_zero_is_five():
-    assert _to_rerank_score(0.0) == pytest.approx(5.0, abs=0.01)
-
-
-def test_to_rerank_score_matches_sigmoid_formula():
-    logit = 2.5
-    expected = round(10.0 / (1.0 + math.exp(-logit)), 2)
-    assert _to_rerank_score(logit) == expected
+def test_normalize_scores_empty():
+    assert _normalize_scores([]) == []
 
 
 def test_apply_ranking_selected_only():
     docs = [Document(page_content=f"doc-{i}") for i in range(1, 6)]
-    ranked = _apply_ranking(docs, [(2, 9.0), (5, 7.0)], top_n=5)
+    ranked = _apply_ranking(
+        docs,
+        [(2, 9.0), (5, 7.0)],
+        top_n=5,
+        raw_logits={2: 2.0, 5: 1.0},
+    )
     assert len(ranked) == 2
     assert [d.page_content for d in ranked] == ["doc-2", "doc-5"]
+    assert ranked[0].metadata["rerank_logit"] == 2.0
 
 
 def test_select_relevant_entries_filters_by_threshold():
@@ -67,16 +66,15 @@ def test_re_rank_docs_ranks_by_cross_encoder_logits():
 
     with (
         patch("app.services.re_ranker._get_cross_encoder", return_value=mock_model),
-        patch("app.services.re_ranker.settings.RERANK_MIN_RELEVANCE", 0.0),
+        patch("app.services.re_ranker.settings.RERANK_MIN_RELEVANCE", 4.0),
     ):
         result = re_rank_docs("query", docs, top_n=2)
 
     assert result.failed is False
-    assert len(result.docs) == 2
+    assert len(result.docs) == 1
     assert result.docs[0].page_content == "high"
-    assert result.docs[0].metadata["rerank_score"] == pytest.approx(9.99, abs=0.1)
-    assert result.docs[1].page_content == "low"
-    assert result.docs[1].metadata["rerank_score"] == pytest.approx(0.07, abs=0.1)
+    assert result.docs[0].metadata["rerank_score"] == 10.0
+    assert result.docs[0].metadata["rerank_logit"] == 8.0
 
 
 def test_re_rank_docs_returns_failed_on_predict_error():

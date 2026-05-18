@@ -3,8 +3,6 @@ import ThemeToggle from "./ThemeToggle.tsx";
 
 const navItems = [
 	{ to: "/", label: "Home" },
-	{ to: "/ingest", label: "Ingest" },
-	{ to: "/ask", label: "Ask" },
 	{ to: "/tools", label: "Tools" },
 ] as const;
 
