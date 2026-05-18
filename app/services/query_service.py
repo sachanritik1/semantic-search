@@ -5,11 +5,7 @@ from langchain_core.documents import Document
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-from app.db.document_store import (
-    chunk_to_document,
-    list_chunks,
-    list_chunks_for_document,
-)
+from app.db.document_store import chunk_to_document, list_chunks_for_document
 from app.services.dense_retriever import DenseRetriever
 from app.services.document_fusion import fuse_documents
 from app.services.embedder import embeddings
@@ -29,10 +25,10 @@ class QueryService:
         self.llm_service = llm_service
         self.query_enhancer = query_enhancer
 
-    async def ask(self, question: str, *, document_id: str | None = None) -> dict:
+    async def ask(self, question: str, *, document_id: str) -> dict:
         query = self.query_enhancer.enhance(question) or question
 
-        if document_id and not list_chunks_for_document(document_id):
+        if not list_chunks_for_document(document_id):
             logger.info(
                 "No chunks found for document_id=%s; answering without retrieval context",
                 document_id,
@@ -96,7 +92,7 @@ class QueryService:
         self,
         query: str,
         *,
-        document_id: str | None = None,
+        document_id: str,
     ) -> list[tuple[Document, float]]:
         dense = DenseRetriever(embeddings, default_k=settings.RETRIEVAL_TOP_K)
         hits = dense.retrieve_with_scores(
@@ -111,12 +107,9 @@ class QueryService:
         self,
         query: str,
         *,
-        document_id: str | None = None,
+        document_id: str,
     ) -> list[tuple[Document, float]]:
-        if document_id:
-            chunks = list_chunks_for_document(document_id)
-        else:
-            chunks = list_chunks()
+        chunks = list_chunks_for_document(document_id)
         if not chunks:
             return []
 

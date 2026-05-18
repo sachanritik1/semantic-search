@@ -7,20 +7,22 @@ import { questionSchema } from "#/lib/forms/schemas.ts";
 
 interface AskSectionProps {
 	documentId: string | null;
-	searchAll: boolean;
 }
 
-export function AskSection({ documentId, searchAll }: AskSectionProps) {
+export function AskSection({ documentId }: AskSectionProps) {
 	const ask = useAskMutation();
-	const canAsk = searchAll || Boolean(documentId);
+	const canAsk = Boolean(documentId);
 
 	const form = useAppForm({
 		defaultValues: { question: "" },
 		validators: { onSubmit: questionSchema },
 		onSubmit: async ({ value }) => {
+			if (!documentId) {
+				return;
+			}
 			await ask.mutateAsync({
 				question: value.question,
-				documentId: searchAll ? null : documentId,
+				documentId,
 			});
 		},
 	});
@@ -38,7 +40,7 @@ export function AskSection({ documentId, searchAll }: AskSectionProps) {
 
 			{!canAsk ? (
 				<p className="m-0 text-sm text-(--sea-ink-soft)">
-					Ingest a PDF first, or enable “Search all documents”.
+					Ingest a PDF first to enable questions on that document.
 				</p>
 			) : null}
 

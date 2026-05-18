@@ -1,6 +1,10 @@
 export interface QuestionRequest {
 	question: string;
-	document_id?: string | null;
+}
+
+export interface AskRequest {
+	question: string;
+	document_id: string;
 }
 
 export interface HealthResponse {

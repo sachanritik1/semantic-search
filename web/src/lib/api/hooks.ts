@@ -22,7 +22,7 @@ export function useIngestMutation() {
 
 export function useAskMutation() {
 	return useMutation({
-		mutationFn: (input: { question: string; documentId?: string | null }) =>
+		mutationFn: (input: { question: string; documentId: string }) =>
 			api.ask(input.question, input.documentId),
 	});
 }

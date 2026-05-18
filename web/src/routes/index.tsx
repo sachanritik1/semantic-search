@@ -29,14 +29,11 @@ function HomePage() {
 	const [session, setSession] = useState<DocumentSession>(() =>
 		loadDocumentSession(),
 	);
-	const [searchAll, setSearchAll] = useState(false);
-
 	useEffect(() => {
 		setSession(loadDocumentSession());
 	}, []);
 
 	const apiOk = health.isSuccess && health.data?.status === "ok";
-	const scopedDocumentId = searchAll ? null : session.activeDocumentId;
 
 	const handleIngested = (result: IngestResponse, source?: string) => {
 		setSession(
@@ -45,12 +42,10 @@ function HomePage() {
 				source,
 			}),
 		);
-		setSearchAll(false);
 	};
 
 	const handleActiveDocumentChange = (documentId: string | null) => {
 		setSession(setActiveDocument(documentId));
-		setSearchAll(false);
 	};
 
 	return (
@@ -82,14 +77,12 @@ function HomePage() {
 
 			<DocumentScopeBar
 				session={session}
-				searchAll={searchAll}
-				onSearchAllChange={setSearchAll}
 				onActiveDocumentChange={handleActiveDocumentChange}
 			/>
 
 			<IngestSection onIngested={handleIngested} />
 
-			<AskSection documentId={scopedDocumentId} searchAll={searchAll} />
+			<AskSection documentId={session.activeDocumentId} />
 
 			<div className="grid gap-4 sm:grid-cols-1">
 				<Link to="/tools" className="no-underline">

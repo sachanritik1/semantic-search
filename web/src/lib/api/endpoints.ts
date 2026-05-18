@@ -7,6 +7,7 @@ import type {
 	LlmTestResponse,
 	PromptTestRequest,
 	PromptTestResponse,
+	AskRequest,
 	QuestionRequest,
 	SelfConsistencyResponse,
 	TokenCountRequest,
@@ -23,11 +24,11 @@ export function ingestPdf(file: File) {
 	return apiPostFormData<IngestResponse>("/ingest", formData);
 }
 
-export function ask(question: string, documentId?: string | null) {
+export function ask(question: string, documentId: string) {
 	return apiPostJson<AskResponse>("/ask", {
 		question,
-		...(documentId ? { document_id: documentId } : {}),
-	} satisfies QuestionRequest);
+		document_id: documentId,
+	} satisfies AskRequest);
 }
 
 export function enhance(question: string) {

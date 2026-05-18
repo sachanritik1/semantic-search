@@ -1,9 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QuestionRequest(BaseModel):
     question: str
-    document_id: str | None = None
+
+
+class AskRequest(BaseModel):
+    question: str
+    document_id: str = Field(..., min_length=1)
 
 
 class EnhanceResponse(BaseModel):

@@ -29,6 +29,10 @@ async def test_ask_uses_only_reranked_docs_on_success():
     service = QueryService(llm_service=llm, query_enhancer=enhancer)
 
     with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[MagicMock()],
+        ),
         patch.object(service, "_retrieve_dense", return_value=[]),
         patch.object(service, "_retrieve_sparse", return_value=[]),
         patch(
@@ -44,7 +48,7 @@ async def test_ask_uses_only_reranked_docs_on_success():
             return_value="prompt",
         ) as build_prompt,
     ):
-        result = await service.ask("question?")
+        result = await service.ask("question?", document_id="doc-1")
 
     assert result["response"] == "answer"
     build_prompt.assert_called_once()
@@ -67,6 +71,10 @@ async def test_ask_uses_all_fused_on_rerank_failure():
     service = QueryService(llm_service=llm, query_enhancer=enhancer)
 
     with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[MagicMock()],
+        ),
         patch.object(service, "_retrieve_dense", return_value=[]),
         patch.object(service, "_retrieve_sparse", return_value=[]),
         patch(
@@ -82,7 +90,7 @@ async def test_ask_uses_all_fused_on_rerank_failure():
             return_value="prompt",
         ) as build_prompt,
     ):
-        await service.ask("question?")
+        await service.ask("question?", document_id="doc-1")
 
     assert build_prompt.call_args.kwargs["docs"] == fused
 
