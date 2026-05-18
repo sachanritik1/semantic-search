@@ -1,35 +1,34 @@
+import math
+from unittest.mock import MagicMock, patch
+
 import pytest
+from langchain_core.documents import Document
 
 from app.services.re_ranker import (
     RerankResult,
     _apply_ranking,
-    _entries_degenerate,
-    _entries_from_fusion,
-    _parse_ranked_entries,
     _select_relevant_entries,
+    _to_rerank_score,
+    re_rank_docs,
 )
-from langchain_core.documents import Document
 
 
-def test_parse_ranked_entries_integer_array():
-    assert _parse_ranked_entries("[2, 5, 1]", 5) == [(2, 5.0), (5, 4.0), (1, 3.0)]
+def test_to_rerank_score_high_logit_near_ten():
+    assert _to_rerank_score(10.0) == pytest.approx(10.0, abs=0.01)
 
 
-def test_parse_ranked_entries_score_objects_sorted_by_relevance():
-    raw = '[{"id": 3, "relevance": 9}, {"id": 1, "score": 4}]'
-    assert _parse_ranked_entries(raw, 5) == [(3, 9.0), (1, 4.0)]
+def test_to_rerank_score_low_logit_near_zero():
+    assert _to_rerank_score(-10.0) == pytest.approx(0.0, abs=0.01)
 
 
-def test_parse_ranked_entries_structured_wrapper():
-    raw = '[{"type":"text","text":"[{\\"id\\": 3, \\"relevance\\": 10}]"}]'
-    assert _parse_ranked_entries(raw, 5) == [(3, 10.0)]
+def test_to_rerank_score_zero_is_five():
+    assert _to_rerank_score(0.0) == pytest.approx(5.0, abs=0.01)
 
 
-def test_parse_ranked_entries_python_repr_wrapper():
-    raw = """[{'type': 'text', 'text': '[{"id": 2, "relevance": 8}, {"id": 4, "relevance": 6}]'}]"""
-    entries = _parse_ranked_entries(raw, 5)
-    assert (2, 8.0) in entries
-    assert (4, 6.0) in entries
+def test_to_rerank_score_matches_sigmoid_formula():
+    logit = 2.5
+    expected = round(10.0 / (1.0 + math.exp(-logit)), 2)
+    assert _to_rerank_score(logit) == expected
 
 
 def test_apply_ranking_selected_only():
@@ -51,37 +50,51 @@ def test_select_relevant_entries_fallback_to_top_scores():
     assert selected == [(1, 3.0), (2, 2.0)]
 
 
-def test_parse_ranked_entries_empty_raises():
-    with pytest.raises(ValueError, match="Invalid rerank response"):
-        _parse_ranked_entries("[]", 5)
-
-
-def test_parse_ranked_entries_invalid_raises():
-    with pytest.raises(ValueError, match="Invalid rerank response"):
-        _parse_ranked_entries("no json here", 5)
-
-
-def test_entries_degenerate_all_zero():
-    assert _entries_degenerate([(1, 0.0), (2, 0.0)]) is True
-
-
-def test_entries_degenerate_has_signal():
-    assert _entries_degenerate([(1, 0.0), (2, 7.0)]) is False
-
-
-def test_entries_from_fusion_orders_by_score():
-    docs = [
-        Document(page_content="a", metadata={"fusion_score": 0.2}),
-        Document(page_content="b", metadata={"fusion_score": 0.9}),
-        Document(page_content="c", metadata={"fusion_score": 0.5}),
-    ]
-    entries = _entries_from_fusion(docs)
-    assert entries[0] == (2, 9.0)
-    assert entries[1] == (3, 5.0)
-
-
 def test_rerank_result_dataclass():
     doc = Document(page_content="x")
     result = RerankResult(docs=[doc], failed=False)
     assert result.docs == [doc]
     assert result.failed is False
+
+
+def test_re_rank_docs_ranks_by_cross_encoder_logits():
+    docs = [
+        Document(page_content="low", metadata={"fusion_score": 0.1}),
+        Document(page_content="high", metadata={"fusion_score": 0.2}),
+    ]
+    mock_model = MagicMock()
+    mock_model.predict.return_value = [-5.0, 8.0]
+
+    with (
+        patch("app.services.re_ranker._get_cross_encoder", return_value=mock_model),
+        patch("app.services.re_ranker.settings.RERANK_MIN_RELEVANCE", 0.0),
+    ):
+        result = re_rank_docs("query", docs, top_n=2)
+
+    assert result.failed is False
+    assert len(result.docs) == 2
+    assert result.docs[0].page_content == "high"
+    assert result.docs[0].metadata["rerank_score"] == pytest.approx(9.99, abs=0.1)
+    assert result.docs[1].page_content == "low"
+    assert result.docs[1].metadata["rerank_score"] == pytest.approx(0.07, abs=0.1)
+
+
+def test_re_rank_docs_returns_failed_on_predict_error():
+    mock_model = MagicMock()
+    mock_model.predict.side_effect = RuntimeError("model error")
+
+    with patch("app.services.re_ranker._get_cross_encoder", return_value=mock_model):
+        result = re_rank_docs(
+            "query",
+            [Document(page_content="a")],
+            top_n=1,
+        )
+
+    assert result.failed is True
+    assert result.docs == []
+
+
+def test_re_rank_docs_empty_input():
+    result = re_rank_docs("query", [])
+    assert result.failed is False
+    assert result.docs == []

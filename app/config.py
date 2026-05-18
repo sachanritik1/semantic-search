@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Core
+    LOG_LEVEL: str = "INFO"
     LLM_PROVIDER: str = "openrouter"
 
     # OpenAI
@@ -49,11 +50,9 @@ class Settings(BaseSettings):
     SPARSE_WEIGHT: float = 0.5
     RETRIEVAL_TOP_K: int = 10
     FUSION_TOP_K: int = 12
+    RERANK_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     RERANK_TOP_K: int = 5
     RERANK_MIN_RELEVANCE: float = 4.0
-    CONTEXT_MAX_CHARS_HIGH: int = 800
-    CONTEXT_MAX_CHARS_MID: int = 400
-    CONTEXT_MAX_CHARS_LOW: int = 150
 
     class Config:
         env_file = ".env"

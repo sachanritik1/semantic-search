@@ -1,13 +1,16 @@
-import asyncio
-import re
+import logging
+import math
 from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
+from langsmith import traceable
+from langsmith.run_helpers import get_current_run_tree
+from sentence_transformers import CrossEncoder
 
 from app.config import settings
-from app.services.llm_service import LLMService
-from app.utils.llm_content import extract_rerank_payload, normalize_llm_content
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,98 +19,112 @@ class RerankResult:
     failed: bool
 
 
-def _coerce_doc_id(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if text.isdigit():
-            return int(text)
-        match = re.search(r"\d+", text)
-        if match:
-            return int(match.group())
-    return None
+_model: CrossEncoder | None = None
 
 
-def _coerce_score(value: Any) -> float | None:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return None
-    return None
+def _tracing_enabled() -> bool:
+    return bool(settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY)
 
 
-def _parse_ranked_entries(raw: Any, num_docs: int) -> list[tuple[int, float]]:
-    if num_docs <= 0:
-        return []
-
-    payload = extract_rerank_payload(raw)
-    if not payload:
-        raise ValueError(f"Invalid rerank response: {raw!r}")
-
-    if all(isinstance(item, int) for item in payload) or all(
-        isinstance(item, (int, float)) and not isinstance(item, bool) for item in payload
-    ):
-        entries: list[tuple[int, float]] = []
-        for position, item in enumerate(payload):
-            doc_id = _coerce_doc_id(item)
-            if doc_id is not None:
-                entries.append((doc_id, float(max(num_docs - position, 1))))
-        return entries
-
-    if all(isinstance(item, dict) for item in payload):
-        scored: list[tuple[float, int, float]] = []
-        for item in payload:
-            doc_id = _coerce_doc_id(
-                item.get("id")
-                or item.get("document_id")
-                or item.get("doc_id")
-                or item.get("index")
-            )
-            if doc_id is None:
-                continue
-            score = _coerce_score(
-                item.get("relevance")
-                or item.get("score")
-                or item.get("rating")
-            )
-            scored.append((score if score is not None else 0.0, doc_id, score or 0.0))
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        if not scored:
-            raise ValueError(f"Invalid rerank response: {raw!r}")
-        return [(doc_id, relevance) for _, doc_id, relevance in scored]
-
-    entries = []
-    for position, item in enumerate(payload):
-        doc_id = _coerce_doc_id(item)
-        if doc_id is not None:
-            entries.append((doc_id, float(max(num_docs - position, 1))))
-    if not entries:
-        raise ValueError(f"Invalid rerank response: {raw}")
-    return entries
-
-
-def _entries_degenerate(entries: list[tuple[int, float]]) -> bool:
-    if not entries:
-        return True
-    scores = [score for _, score in entries]
-    return max(scores) <= 0 or len(set(scores)) == 1
-
-
-def _entries_from_fusion(batch_docs: list[Document]) -> list[tuple[int, float]]:
-    scored = [
-        (float((doc.metadata or {}).get("fusion_score", 0.0)), i)
-        for i, doc in enumerate(batch_docs, start=1)
+def _docs_to_trace_list(docs: list[Document]) -> list[dict[str, Any]]:
+    return [
+        {
+            "chunk_id": (doc.metadata or {}).get("chunk_id"),
+            "document_id": (doc.metadata or {}).get("document_id"),
+            "chunk_index": (doc.metadata or {}).get("chunk_index"),
+            "source": (doc.metadata or {}).get("source"),
+            "fusion_score": (doc.metadata or {}).get("fusion_score"),
+            "content": doc.page_content,
+        }
+        for doc in docs
     ]
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [(i, round(fusion * 10, 2)) for fusion, i in scored]
+
+
+def _trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    docs = inputs.get("docs") or []
+    return {
+        "query": inputs.get("query"),
+        "top_n": inputs.get("top_n"),
+        "candidate_count": len(docs),
+        "min_relevance": settings.RERANK_MIN_RELEVANCE,
+        "model": settings.RERANK_MODEL_NAME,
+        "input_docs": _docs_to_trace_list(docs),
+    }
+
+
+def _chunk_label(doc: Document, doc_id: int) -> str:
+    chunk_id = (doc.metadata or {}).get("chunk_id")
+    return str(chunk_id) if chunk_id is not None else f"doc-{doc_id}"
+
+
+def _build_rerank_trace(
+    *,
+    query: str,
+    docs: list[Document],
+    entries: list[tuple[int, float]],
+    selected_ids: set[int],
+    ranked: list[Document],
+    status: str,
+    top_n: int,
+    min_relevance: float,
+    error: str | None = None,
+) -> dict[str, Any]:
+    candidates = []
+    if entries:
+        for doc_id, score in entries:
+            source = docs[doc_id - 1]
+            meta = source.metadata or {}
+            candidates.append(
+                {
+                    "chunk_id": meta.get("chunk_id"),
+                    "document_id": meta.get("document_id"),
+                    "chunk_index": meta.get("chunk_index"),
+                    "source": meta.get("source"),
+                    "fusion_score": meta.get("fusion_score"),
+                    "rerank_score": score,
+                    "selected": doc_id in selected_ids,
+                    "content": source.page_content,
+                }
+            )
+    else:
+        candidates = [
+            {**entry, "rerank_score": None, "selected": False}
+            for entry in _docs_to_trace_list(docs)
+        ]
+
+    return {
+        "status": status,
+        "query": query,
+        "top_n": top_n,
+        "min_relevance": min_relevance,
+        "candidate_count": len(docs),
+        "selected_count": len(ranked),
+        "candidates": candidates,
+        "selected_chunk_ids": [
+            (doc.metadata or {}).get("chunk_id") for doc in ranked
+        ],
+        "error": error,
+    }
+
+
+def _record_rerank_trace(payload: dict[str, Any]) -> None:
+    if not _tracing_enabled():
+        return
+    run = get_current_run_tree()
+    if run is not None:
+        run.add_outputs(payload)
+
+
+def _get_cross_encoder() -> CrossEncoder:
+    global _model
+    if _model is None:
+        logger.info("Loading cross-encoder model: %s", settings.RERANK_MODEL_NAME)
+        _model = CrossEncoder(settings.RERANK_MODEL_NAME)
+    return _model
+
+
+def _to_rerank_score(logit: float) -> float:
+    return round(10.0 / (1.0 + math.exp(-logit)), 2)
 
 
 def _select_relevant_entries(
@@ -126,7 +143,7 @@ def _select_relevant_entries(
 
 
 def _apply_ranking(
-    batch_docs: list[Document],
+    candidates: list[Document],
     entries: list[tuple[int, float]],
     top_n: int,
 ) -> list[Document]:
@@ -134,10 +151,10 @@ def _apply_ranking(
     ranked: list[Document] = []
 
     for doc_id, score in entries:
-        if doc_id in seen or not (1 <= doc_id <= len(batch_docs)):
+        if doc_id in seen or not (1 <= doc_id <= len(candidates)):
             continue
         seen.add(doc_id)
-        source = batch_docs[doc_id - 1]
+        source = candidates[doc_id - 1]
         metadata = dict(source.metadata or {})
         metadata["rerank_score"] = score
         ranked.append(
@@ -149,95 +166,118 @@ def _apply_ranking(
     return ranked
 
 
-def _doc_block(doc: Document, doc_id: int, max_doc_chars: int) -> str:
-    content = doc.page_content[:max_doc_chars] if max_doc_chars else doc.page_content
-    fusion = (doc.metadata or {}).get("fusion_score")
-    score_attr = f' fusion="{float(fusion):.2f}"' if fusion is not None else ""
-    return f'<doc id="{doc_id}"{score_attr}>\n{content}\n</doc>'
-
-
-def _rerank_prompt(query: str, blocks: list[str], num_docs: int) -> str:
-    return (
-        f"Score each doc 1-{num_docs} for relevance to the question (1-10, relative ranking).\n"
-        f"Question: {query}\n\n"
-        f"{chr(10).join(blocks)}\n\n"
-        f'Return JSON only, one entry per id: [{{"id":1,"relevance":N}}, ...]'
-    )
-
-
-def _resolve_entries(
-    raw_content: Any,
-    batch_docs: list[Document],
-    top_n: int,
+def _score_candidates(
+    query: str,
+    candidates: list[Document],
 ) -> list[tuple[int, float]]:
-    try:
-        entries = _parse_ranked_entries(raw_content, len(batch_docs))
-        if _entries_degenerate(entries):
-            print(
-                "Rerank scores degenerate (all zero/flat); using fusion_score order."
-            )
-            entries = _entries_from_fusion(batch_docs)
-        return _select_relevant_entries(
-            entries,
-            top_n=top_n,
-            min_relevance=settings.RERANK_MIN_RELEVANCE,
-        )
-    except ValueError as exc:
-        preview = normalize_llm_content(raw_content)
-        print(f"Rerank parse failed: {exc}; raw={preview[:500]!r}")
-        return _select_relevant_entries(
-            _entries_from_fusion(batch_docs),
-            top_n=top_n,
-            min_relevance=0.0,
-        )
+    pairs = [(query, doc.page_content) for doc in candidates]
+    logits = _get_cross_encoder().predict(pairs)
+    scored = sorted(
+        enumerate(logits, start=1),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return [(doc_id, _to_rerank_score(float(logit))) for doc_id, logit in scored]
 
 
-async def re_rank_docs(
+@traceable(
+    run_type="chain",
+    name="cross_encoder_rerank",
+    process_inputs=_trace_inputs,
+)
+def re_rank_docs(
     query: str,
     docs: list[Document],
-    llm_service: LLMService,
     top_n: int = 5,
-    max_candidates: int | None = None,
-    max_doc_chars: int = 400,
-    max_tokens: int | None = 512,
-    timeout_s: float | None = 20.0,
-    batch_count: int = 1,
 ) -> RerankResult:
     if not docs:
+        logger.warning("Rerank skipped: no candidates")
+        _record_rerank_trace(
+            _build_rerank_trace(
+                query=query,
+                docs=[],
+                entries=[],
+                selected_ids=set(),
+                ranked=[],
+                status="skipped",
+                top_n=top_n,
+                min_relevance=settings.RERANK_MIN_RELEVANCE,
+            )
+        )
         return RerankResult(docs=[], failed=False)
 
-    candidates = docs[:max_candidates] if max_candidates is not None else docs
-    batch_count = max(1, batch_count)
-    batch_size = max(1, (len(candidates) + batch_count - 1) // batch_count)
-    batches = [
-        candidates[i : i + batch_size]
-        for i in range(0, len(candidates), batch_size)
-    ][:batch_count]
+    min_relevance = settings.RERANK_MIN_RELEVANCE
+    logger.info(
+        "Reranking %d candidates (top_n=%d, min_relevance=%.1f)",
+        len(docs),
+        top_n,
+        min_relevance,
+    )
 
-    async def rerank_batch(batch_docs: list[Document]) -> list[Document]:
-        blocks = [
-            _doc_block(doc, i, max_doc_chars)
-            for i, doc in enumerate(batch_docs, start=1)
-        ]
-        response = await asyncio.wait_for(
-            llm_service.generate_text_async(
-                _rerank_prompt(query, blocks, len(batch_docs)),
-                temperature=0.1,
-                max_tokens=max_tokens,
-            ),
-            timeout=timeout_s,
-        )
-        selected = _resolve_entries(response.content, batch_docs, top_n)
-        return _apply_ranking(batch_docs, selected, top_n)
-
+    entries: list[tuple[int, float]] = []
+    selected_ids: set[int] = set()
     try:
-        ranked: list[Document] = []
-        for batch in batches:
-            ranked.extend(await rerank_batch(batch))
-        selected = ranked[:top_n]
-        if not selected:
-            print("Rerank returned no documents.")
-        return RerankResult(docs=selected, failed=not selected)
-    except (TimeoutError, asyncio.TimeoutError) as exc:
-        print(f"Rerank call failed: {exc}")
+        entries = _score_candidates(query, docs)
+        selected = _select_relevant_entries(
+            entries,
+            top_n=top_n,
+            min_relevance=min_relevance,
+        )
+        selected_ids = {doc_id for doc_id, _ in selected}
+
+        used_fallback = not any(score >= min_relevance for _, score in entries)
+        if used_fallback:
+            logger.warning(
+                "Rerank fallback: no scores >= %.1f, taking top %d",
+                min_relevance,
+                len(selected),
+            )
+
+        ranked = _apply_ranking(docs, selected, top_n)
+        if not ranked:
+            logger.warning("Rerank failed: no documents after ranking")
+            _record_rerank_trace(
+                _build_rerank_trace(
+                    query=query,
+                    docs=docs,
+                    entries=entries,
+                    selected_ids=selected_ids,
+                    ranked=[],
+                    status="failed",
+                    top_n=top_n,
+                    min_relevance=min_relevance,
+                    error="no_documents_after_ranking",
+                )
+            )
+            return RerankResult(docs=[], failed=True)
+
+        logger.info("Rerank ok: %d/%d candidates selected", len(ranked), len(docs))
+        _record_rerank_trace(
+            _build_rerank_trace(
+                query=query,
+                docs=docs,
+                entries=entries,
+                selected_ids=selected_ids,
+                ranked=ranked,
+                status="fallback" if used_fallback else "success",
+                top_n=top_n,
+                min_relevance=min_relevance,
+            )
+        )
+        return RerankResult(docs=ranked, failed=False)
+    except Exception as exc:
+        logger.exception("Rerank failed: cross-encoder error")
+        _record_rerank_trace(
+            _build_rerank_trace(
+                query=query,
+                docs=docs,
+                entries=entries,
+                selected_ids=selected_ids,
+                ranked=[],
+                status="error",
+                top_n=top_n,
+                min_relevance=min_relevance,
+                error=str(exc),
+            )
+        )
         return RerankResult(docs=[], failed=True)

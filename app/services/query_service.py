@@ -1,8 +1,11 @@
+import logging
+
 from langchain_core.documents import Document
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 from app.db.document_store import chunk_to_document, list_chunks
-from app.services.context_compressor import compress_documents_for_context
 from app.services.dense_retriever import DenseRetriever
 from app.services.document_fusion import fuse_documents
 from app.services.embedder import embeddings
@@ -44,27 +47,23 @@ class QueryService:
                 "enhanced_question": query,
             }
 
-        rerank_result = await re_rank_docs(
+        rerank_result = re_rank_docs(
             query,
             fused,
-            llm_service=self.llm_service,
             top_n=settings.RERANK_TOP_K,
-            max_candidates=settings.FUSION_TOP_K,
-            max_doc_chars=600,
-            max_tokens=512,
-            timeout_s=20.0,
-            batch_count=1,
         )
 
         if rerank_result.failed:
-            print("Rerank failed; using all fused documents for answer context.")
+            logger.warning(
+                "Rerank failed; using all %d fused documents for answer context",
+                len(fused),
+            )
             answer_docs = fused
         else:
             answer_docs = rerank_result.docs
 
-        compressed = compress_documents_for_context(answer_docs)
         prompt_text = build_prompt(
-            docs=compressed,
+            docs=answer_docs,
             question=question,
             search_query=query,
         )

@@ -1,4 +1,3 @@
-from app.services.re_ranker import _parse_ranked_entries
 from app.utils.llm_content import (
     extract_rerank_payload,
     normalize_llm_content,
@@ -26,14 +25,3 @@ def test_extract_rerank_payload_nested():
     raw = '[{"type":"text","text":"[{\\"id\\": 3, \\"relevance\\": 10}]"}]'
     payload = extract_rerank_payload(raw)
     assert payload == [{"id": 3, "relevance": 10}]
-
-
-def test_parse_after_normalize_structured_response():
-    raw = '[{"type":"text","text":"[{\\"id\\": 3, \\"relevance\\": 10}]"}]'
-    assert _parse_ranked_entries(raw, 5) == [(3, 10.0)]
-
-
-def test_parse_broken_wrapper_json_unescaped_inner():
-    """Provider returns invalid outer JSON when inner array quotes are not escaped."""
-    raw = '[{"type":"text","text":"[{"id": 3, "relevance": 10}]"}]'
-    assert _parse_ranked_entries(raw, 5) == [(3, 10.0)]

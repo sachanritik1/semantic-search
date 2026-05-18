@@ -9,7 +9,7 @@ Built as a learning and experimentation platform for hybrid retrieval, query rew
 - **PDF ingestion** — upload PDFs, chunk text, embed with [sentence-transformers](https://www.sbert.net/), and index in Qdrant
 - **Hybrid retrieval** — dense (semantic) + sparse (BM25) search, merged and reranked before generation
 - **Query enhancement** — optional LLM rewrite of user questions for better retrieval
-- **LLM reranking** — score and reorder candidates with the configured model
+- **Cross-encoder reranking** — score and reorder candidates locally with `sentence-transformers` CrossEncoder
 - **Retriever comparison** — side-by-side dense vs sparse results, with optional LLM relevance scoring
 - **Multi-provider LLMs** — OpenAI, Google Gemini, or OpenRouter (switch via config)
 - **Prompt templates** — reusable `.txt` templates for QA, summarization, and extraction
@@ -44,7 +44,8 @@ flowchart LR
 | **Qdrant** | Vector store for dense (semantic) retrieval |
 | **SQLite** | Chunk metadata and text for BM25 sparse retrieval |
 | **HuggingFace embeddings** | Default: `sentence-transformers/all-MiniLM-L6-v2` |
-| **LLM provider** | Answer generation, query enhancement, reranking, comparisons |
+| **CrossEncoder** | Local reranking (`cross-encoder/ms-marco-MiniLM-L-6-v2` by default) |
+| **LLM provider** | Answer generation, query enhancement, comparisons |
 
 ## Prerequisites
 
@@ -212,7 +213,7 @@ docs/improvement-plan.md # Roadmap toward production hybrid RAG
 2. **Retrieve** — dense (Qdrant relevance scores) and sparse (BM25) each return top‑K chunks.
 3. **Fuse** — dedupe by `chunk_id`, min–max normalize per channel, then  
    `fusion_score = DENSE_WEIGHT × dense_norm + SPARSE_WEIGHT × sparse_norm`.
-4. **Rerank** — one LLM pass scores and selects up to `RERANK_TOP_K` chunks; on failure, all fused chunks are used.
+4. **Rerank** — CrossEncoder scores and selects up to `RERANK_TOP_K` chunks; on failure, all fused chunks are used.
 5. **Compress** — tiered truncation by rerank score (high / mid / low char limits).
 6. **Generate** — only the answer-context chunks (rerank-selected, or all fused on rerank failure) go into the prompt.
 
@@ -239,6 +240,7 @@ pytest
 | `QDRANT_COLLECTION_NAME` | `semantic-search` | Collection name |
 | `DATABASE_URL` | `sqlite:///./docstore.db` | Chunk metadata store |
 | `EMBEDDING_MODEL_NAME` | `all-MiniLM-L6-v2` | HuggingFace embedding model |
+| `RERANK_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | CrossEncoder rerank model |
 | `ENHANCER_MODEL` | _(provider default)_ | Override model for query enhancement |
 | `ENABLE_REASONING` | `false` | Enable reasoning mode where supported |
 | `LANGSMITH_TRACING` | `true` | Enable LangSmith when API key is set |
