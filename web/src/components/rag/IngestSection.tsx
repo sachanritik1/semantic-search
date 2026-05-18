@@ -1,5 +1,6 @@
 import { ApiErrorAlert } from "#/components/rag/ApiErrorAlert.tsx";
 import { ResultPanel } from "#/components/rag/ResultPanel.tsx";
+import { WorkspacePanel } from "#/components/rag/WorkspacePanel.tsx";
 import { FieldGroup } from "#/components/ui/field.tsx";
 import { useAppForm } from "#/hooks/use-app-form.ts";
 import { useIngestMutation } from "#/lib/api/hooks.ts";
@@ -27,25 +28,21 @@ export function IngestSection({ onIngested }: IngestSectionProps) {
 	});
 
 	return (
-		<section className="space-y-4">
-			<div className="space-y-2">
-				<p className="island-kicker m-0">Write path</p>
-				<h2 className="m-0 text-xl font-semibold text-(--sea-ink)">Ingest PDF</h2>
-				<p className="m-0 text-sm text-(--sea-ink-soft)">
-					Upload a PDF to chunk, embed, and index. Only `.pdf` files are supported.
-				</p>
-			</div>
-
+		<WorkspacePanel
+			kicker="Write path"
+			title="Upload PDF"
+			description="Chunk, embed, and index a PDF. Only `.pdf` files are supported."
+		>
 			<form
 				id="ingest-form"
-				className="island-shell max-w-xl space-y-4"
+				className="flex flex-1 flex-col gap-4"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void form.handleSubmit();
 				}}
 			>
 				<form.AppForm>
-					<FieldGroup>
+					<FieldGroup className="flex-1">
 						<form.AppField name="file">
 							{(field) => (
 								<field.FileField
@@ -56,7 +53,7 @@ export function IngestSection({ onIngested }: IngestSectionProps) {
 							)}
 						</form.AppField>
 					</FieldGroup>
-					<form.SubmitButton label="Upload and index" />
+					<form.SubmitButton label="Upload and index" className="w-fit" />
 				</form.AppForm>
 
 				{ingest.isError ? <ApiErrorAlert error={ingest.error} /> : null}
@@ -67,6 +64,6 @@ export function IngestSection({ onIngested }: IngestSectionProps) {
 					</ResultPanel>
 				) : null}
 			</form>
-		</section>
+		</WorkspacePanel>
 	);
 }

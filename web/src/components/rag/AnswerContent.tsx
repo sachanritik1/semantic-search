@@ -47,22 +47,24 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
 	);
 }
 
-export function AnswerContent({ content }: { content: string }) {
+interface AnswerContentProps {
+	content: string;
+	embedded?: boolean;
+}
+
+export function AnswerContent({ content, embedded = false }: AnswerContentProps) {
 	const blocks = parseAnswer(content);
 	const citations = collectCitations(blocks);
 
 	if (blocks.length === 0) {
 		return (
-			<div className="island-shell space-y-2">
-				<p className="island-kicker m-0">Answer</p>
-				<p className="m-0 text-sm text-(--sea-ink-soft)">No answer returned.</p>
-			</div>
+			<p className="m-0 text-sm text-(--sea-ink-soft)">No answer returned.</p>
 		);
 	}
 
 	return (
-		<div className="island-shell space-y-4">
-			<p className="island-kicker m-0">Answer</p>
+		<div className={embedded ? "flex flex-1 flex-col gap-4 overflow-y-auto" : "island-shell space-y-4"}>
+			{embedded ? null : <p className="island-kicker m-0">Answer</p>}
 
 			<div className="prose prose-sm max-w-none text-(--sea-ink) prose-headings:text-(--sea-ink) prose-strong:text-(--sea-ink) prose-p:my-2 prose-li:my-1">
 				{blocks.map((block, blockIndex) => {

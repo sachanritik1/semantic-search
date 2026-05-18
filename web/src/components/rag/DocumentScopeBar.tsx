@@ -1,4 +1,5 @@
 import { Badge } from "#/components/ui/badge.tsx";
+import { WorkspacePanel } from "#/components/rag/WorkspacePanel.tsx";
 import type { DocumentSession } from "#/lib/session/documents.ts";
 
 interface DocumentScopeBarProps {
@@ -23,47 +24,48 @@ export function DocumentScopeBar({
 	const { activeDocumentId, recent } = session;
 
 	return (
-		<div className="island-shell flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-			<div className="space-y-2">
-				<p className="m-0 text-sm font-medium text-(--sea-ink)">Document scope</p>
-				{activeDocumentId ? (
-					<div className="flex flex-wrap items-center gap-2">
-						<Badge variant="secondary" className="font-mono text-xs">
-							{activeDocumentId}
-						</Badge>
-						<span className="text-sm text-(--sea-ink-soft)">
-							Questions are scoped to this document only.
-						</span>
-					</div>
-				) : (
-					<p className="m-0 text-sm text-(--sea-ink-soft)">
-						Ingest a PDF to select a document before asking questions.
-					</p>
-				)}
-			</div>
+		<WorkspacePanel
+			kicker="Scope"
+			title="Select document"
+			description="Choose which ingested PDF to query. Questions only search this document."
+		>
+			{activeDocumentId ? (
+				<div className="flex flex-wrap items-center gap-2">
+					<Badge variant="secondary" className="font-mono text-xs">
+						{activeDocumentId}
+					</Badge>
+				</div>
+			) : (
+				<p className="m-0 text-sm text-(--sea-ink-soft)">
+					No document selected yet.
+				</p>
+			)}
 
-			{recent.length > 0 ? (
-				<label className="flex w-full flex-col gap-1 sm:w-72">
-					<span className="text-xs font-medium text-(--sea-ink-soft)">
-						Recent documents
-					</span>
-					<select
-						className="rounded-md border border-(--line) bg-transparent px-3 py-2 text-sm text-(--sea-ink) outline-none focus-visible:border-(--lagoon)"
-						value={activeDocumentId ?? ""}
-						onChange={(event) => {
-							const value = event.target.value;
-							onActiveDocumentChange(value || null);
-						}}
-					>
-						<option value="">Select a document…</option>
-						{recent.map((doc) => (
-							<option key={doc.documentId} value={doc.documentId}>
-								{formatDocumentLabel(doc.documentId, doc.source)}
-							</option>
-						))}
-					</select>
-				</label>
-			) : null}
-		</div>
+			<label className="mt-auto flex flex-col gap-1.5">
+				<span className="text-xs font-medium text-(--sea-ink-soft)">
+					{recent.length > 0 ? "Recent documents" : "Documents"}
+				</span>
+				<select
+					className="w-full rounded-md border border-(--line) bg-transparent px-3 py-2 text-sm text-(--sea-ink) outline-none focus-visible:border-(--lagoon) disabled:cursor-not-allowed disabled:opacity-60"
+					value={activeDocumentId ?? ""}
+					disabled={recent.length === 0}
+					onChange={(event) => {
+						const value = event.target.value;
+						onActiveDocumentChange(value || null);
+					}}
+				>
+					<option value="">
+						{recent.length > 0
+							? "Select a document…"
+							: "Ingest a PDF to get started"}
+					</option>
+					{recent.map((doc) => (
+						<option key={doc.documentId} value={doc.documentId}>
+							{formatDocumentLabel(doc.documentId, doc.source)}
+						</option>
+					))}
+				</select>
+			</label>
+		</WorkspacePanel>
 	);
 }

@@ -56,8 +56,7 @@ function HomePage() {
 					Semantic Search
 				</h1>
 				<p className="m-0 max-w-2xl text-(--sea-ink-soft)">
-					Ingest a PDF, then ask questions scoped to that document. Dense and
-					sparse retrieval filter by the active document id.
+					Ingest a PDF, select it, then ask questions scoped to that document.
 				</p>
 				<div className="flex items-center gap-2">
 					<span className="text-sm text-(--sea-ink-soft)">API status</span>
@@ -75,12 +74,16 @@ function HomePage() {
 				</div>
 			</div>
 
-			<DocumentScopeBar
-				session={session}
-				onActiveDocumentChange={handleActiveDocumentChange}
-			/>
-
-			<IngestSection onIngested={handleIngested} />
+			<section className="space-y-3">
+				<p className="island-kicker m-0">Document</p>
+				<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+					<DocumentScopeBar
+						session={session}
+						onActiveDocumentChange={handleActiveDocumentChange}
+					/>
+					<IngestSection onIngested={handleIngested} />
+				</div>
+			</section>
 
 			<AskSection documentId={session.activeDocumentId} />
 

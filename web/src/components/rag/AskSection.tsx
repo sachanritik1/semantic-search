@@ -1,5 +1,6 @@
 import { ApiErrorAlert } from "#/components/rag/ApiErrorAlert.tsx";
 import { AnswerContent } from "#/components/rag/AnswerContent.tsx";
+import { WorkspacePanel } from "#/components/rag/WorkspacePanel.tsx";
 import { FieldGroup } from "#/components/ui/field.tsx";
 import { useAppForm } from "#/hooks/use-app-form.ts";
 import { useAskMutation } from "#/lib/api/hooks.ts";
@@ -28,67 +29,84 @@ export function AskSection({ documentId }: AskSectionProps) {
 	});
 
 	return (
-		<section className="space-y-4">
-			<div className="space-y-2">
-				<p className="island-kicker m-0">Query path</p>
-				<h2 className="m-0 text-xl font-semibold text-(--sea-ink)">Ask a question</h2>
-				<p className="m-0 text-sm text-(--sea-ink-soft)">
-					Runs enhance → dense + sparse retrieval → rerank → generate. This may
-					take 10–30 seconds.
-				</p>
+		<section className="space-y-3">
+			<p className="island-kicker m-0">Query path</p>
+			<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+				<WorkspacePanel
+					title="Your question"
+					description="Runs enhance → retrieve → rerank → generate. May take 10–30 seconds."
+					className="min-h-[22rem]"
+				>
+					{!canAsk ? (
+						<p className="m-0 text-sm text-(--sea-ink-soft)">
+							Ingest a PDF and select it above before asking.
+						</p>
+					) : null}
+
+					<form
+						id="ask-form"
+						className="flex flex-1 flex-col gap-4"
+						onSubmit={(event) => {
+							event.preventDefault();
+							void form.handleSubmit();
+						}}
+					>
+						<form.AppForm>
+							<FieldGroup className="flex-1 gap-4">
+								<form.AppField name="question">
+									{(field) => (
+										<field.TextAreaField
+											label="Question"
+											placeholder="What are the main findings in the document?"
+											rows={6}
+										/>
+									)}
+								</form.AppField>
+							</FieldGroup>
+							<form.SubmitButton label="Ask" disabled={!canAsk} className="w-fit" />
+						</form.AppForm>
+
+						{ask.isError ? <ApiErrorAlert error={ask.error} /> : null}
+					</form>
+				</WorkspacePanel>
+
+				<WorkspacePanel
+					title="Answer"
+					description="Grounded response from the selected document."
+					className="min-h-[22rem]"
+				>
+					{ask.isPending ? (
+						<p className="m-0 text-sm text-(--sea-ink-soft)">Generating answer…</p>
+					) : null}
+
+					{ask.isSuccess ? (
+						<div className="flex flex-1 flex-col gap-4 overflow-hidden">
+							<AnswerContent content={ask.data.response} embedded />
+							<details className="shrink-0 rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
+								<summary className="cursor-pointer font-medium text-(--sea-ink)">
+									Query enhancement
+								</summary>
+								<div className="mt-2 space-y-2">
+									<p className="m-0">
+										<span className="font-medium">Original:</span>{" "}
+										{ask.data.original_question}
+									</p>
+									<p className="m-0">
+										<span className="font-medium">Enhanced:</span>{" "}
+										{ask.data.enhanced_question}
+									</p>
+								</div>
+							</details>
+						</div>
+					) : null}
+
+					{!ask.isPending && !ask.isSuccess && !ask.isError ? (
+						<p className="m-0 text-sm text-(--sea-ink-soft)">
+							Submit a question to see the answer here.
+						</p>
+					) : null}
+				</WorkspacePanel>
 			</div>
-
-			{!canAsk ? (
-				<p className="m-0 text-sm text-(--sea-ink-soft)">
-					Ingest a PDF first to enable questions on that document.
-				</p>
-			) : null}
-
-			<form
-				id="ask-form"
-				className="island-shell max-w-2xl space-y-4"
-				onSubmit={(event) => {
-					event.preventDefault();
-					void form.handleSubmit();
-				}}
-			>
-				<form.AppForm>
-					<FieldGroup>
-						<form.AppField name="question">
-							{(field) => (
-								<field.TextAreaField
-									label="Question"
-									placeholder="What are the main findings in the document?"
-								/>
-							)}
-						</form.AppField>
-					</FieldGroup>
-					<form.SubmitButton label="Ask" disabled={!canAsk} />
-				</form.AppForm>
-
-				{ask.isError ? <ApiErrorAlert error={ask.error} /> : null}
-
-				{ask.isSuccess ? (
-					<div className="space-y-4">
-						<AnswerContent content={ask.data.response} />
-						<details className="island-shell text-sm text-(--sea-ink-soft)">
-							<summary className="cursor-pointer font-medium text-(--sea-ink)">
-								Query enhancement
-							</summary>
-							<div className="mt-3 space-y-2">
-								<p className="m-0">
-									<span className="font-medium">Original:</span>{" "}
-									{ask.data.original_question}
-								</p>
-								<p className="m-0">
-									<span className="font-medium">Enhanced:</span>{" "}
-									{ask.data.enhanced_question}
-								</p>
-							</div>
-						</details>
-					</div>
-				) : null}
-			</form>
 		</section>
 	);
 }
