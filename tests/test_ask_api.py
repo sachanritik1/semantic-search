@@ -16,3 +16,4 @@ def test_ask_rejects_empty_document_id():
         json={"question": "What is this about?", "document_id": ""},
     )
     assert response.status_code == 422
+

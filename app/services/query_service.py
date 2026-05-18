@@ -12,6 +12,7 @@ from app.services.embedder import embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs
+from app.services.semantic_cache import SemanticAskCache
 from app.services.sparse_retriever import SparseRetriever
 from app.utils.prompts import build_prompt
 
@@ -21,11 +22,18 @@ class QueryService:
         self,
         llm_service: LLMService,
         query_enhancer: QueryEnhancer,
+        semantic_cache: SemanticAskCache | None = None,
     ):
         self.llm_service = llm_service
         self.query_enhancer = query_enhancer
+        self.semantic_cache = semantic_cache
 
     async def ask(self, question: str, *, document_id: str) -> dict:
+        if self.semantic_cache:
+            cached = self.semantic_cache.lookup(question, document_id)
+            if cached is not None:
+                return {**cached, "cache_hit": True}
+
         query = self.query_enhancer.enhance(question) or question
 
         if not list_chunks_for_document(document_id):
@@ -35,11 +43,15 @@ class QueryService:
             )
             prompt_text = build_prompt(docs=[], question=query)
             response = self.llm_service.generate_text(prompt_text)
-            return {
-                "response": response.content,
-                "original_question": question,
-                "enhanced_question": query,
-            }
+            return self._complete_ask(
+                question,
+                document_id,
+                {
+                    "response": response.content,
+                    "original_question": question,
+                    "enhanced_question": query,
+                },
+            )
 
         dense_hits = self._retrieve_dense(query, document_id=document_id)
         sparse_hits = self._retrieve_sparse(query, document_id=document_id)
@@ -54,11 +66,15 @@ class QueryService:
         if not fused:
             prompt_text = build_prompt(docs=[], question=query)
             response = self.llm_service.generate_text(prompt_text)
-            return {
-                "response": response.content,
-                "original_question": question,
-                "enhanced_question": query,
-            }
+            return self._complete_ask(
+                question,
+                document_id,
+                {
+                    "response": response.content,
+                    "original_question": question,
+                    "enhanced_question": query,
+                },
+            )
 
         rerank_result = re_rank_docs(
             query,
@@ -82,11 +98,25 @@ class QueryService:
         )
         response = self.llm_service.generate_text(prompt_text)
 
-        return {
-            "response": response.content,
-            "original_question": question,
-            "enhanced_question": query,
-        }
+        return self._complete_ask(
+            question,
+            document_id,
+            {
+                "response": response.content,
+                "original_question": question,
+                "enhanced_question": query,
+            },
+        )
+
+    def _complete_ask(
+        self,
+        question: str,
+        document_id: str,
+        result: dict,
+    ) -> dict:
+        if self.semantic_cache:
+            self.semantic_cache.store(question, document_id, result)
+        return {**result, "cache_hit": False}
 
     def _retrieve_dense(
         self,

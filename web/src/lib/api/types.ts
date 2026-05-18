@@ -15,6 +15,7 @@ export interface AskResponse {
 	response: string;
 	original_question: string;
 	enhanced_question: string;
+	cache_hit?: boolean;
 }
 
 export interface EnhanceResponse {

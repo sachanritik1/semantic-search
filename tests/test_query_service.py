@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 
 from app.services.query_service import QueryService
 from app.services.re_ranker import RerankResult
+from app.services.semantic_cache import SemanticAskCache
 
 
 @pytest.mark.asyncio
@@ -162,3 +163,41 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
     retrieve_sparse.assert_not_called()
     build_prompt.assert_called_once_with(docs=[], question="enhanced q")
     assert result["response"] == "no context answer"
+
+
+@pytest.mark.asyncio
+async def test_ask_returns_cache_hit_on_repeat_question(isolated_ask_cache_db):
+    llm = MagicMock()
+    llm.generate_text.return_value = MagicMock(content="cached answer")
+
+    enhancer = MagicMock()
+    enhancer.enhance.return_value = "enhanced q"
+
+    embeddings = MagicMock()
+    embeddings.embed_query.return_value = [1.0, 0.0]
+    cache = SemanticAskCache(embeddings, threshold=0.99, ttl_seconds=3600)
+
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        semantic_cache=cache,
+    )
+
+    with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[],
+        ),
+        patch(
+            "app.services.query_service.build_prompt",
+            return_value="prompt",
+        ),
+    ):
+        first = await service.ask("question?", document_id="doc-1")
+        second = await service.ask("question?", document_id="doc-1")
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert second["response"] == "cached answer"
+    enhancer.enhance.assert_called_once()
+    llm.generate_text.assert_called_once()

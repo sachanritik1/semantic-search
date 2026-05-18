@@ -66,6 +66,8 @@ def _migrate_schema() -> None:
 
 
 def init_db() -> None:
+    from app.db.ask_cache_store import AskCacheRow  # noqa: F401
+
     Base.metadata.create_all(engine)
     _migrate_schema()
 

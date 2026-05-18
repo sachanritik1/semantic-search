@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     RERANK_TOP_K: int = 5
     RERANK_MIN_RELEVANCE: float = 4.0
 
+    # Semantic /ask response cache (in-process, TTL-only eviction)
+    SEMANTIC_CACHE_ENABLED: bool = True
+    SEMANTIC_CACHE_THRESHOLD: float = 0.92
+    SEMANTIC_CACHE_TTL_SECONDS: int = 3600
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
