@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     DENSE_WEIGHT: float = 0.5
     SPARSE_WEIGHT: float = 0.5
     RETRIEVAL_TOP_K: int = 10
+    FUSION_MIN_SCORE: float = 0.25
+    FUSION_MIN_DOCS: int = 10
     RERANK_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     RERANK_TOP_K: int = 8
     RERANK_MIN_RELEVANCE: float = 4.0

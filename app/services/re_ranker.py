@@ -25,6 +25,18 @@ def _tracing_enabled() -> bool:
     return bool(settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY)
 
 
+def _retrieval_methods(meta: dict[str, Any]) -> list[str]:
+    methods = meta.get("retrieval_methods")
+    if methods:
+        return list(methods)
+    inferred: list[str] = []
+    if meta.get("dense_score") is not None:
+        inferred.append("dense")
+    if meta.get("sparse_score") is not None:
+        inferred.append("sparse")
+    return inferred
+
+
 def _docs_to_trace_list(docs: list[Document]) -> list[dict[str, Any]]:
     return [
         {
@@ -33,6 +45,7 @@ def _docs_to_trace_list(docs: list[Document]) -> list[dict[str, Any]]:
             "chunk_index": (doc.metadata or {}).get("chunk_index"),
             "source": (doc.metadata or {}).get("source"),
             "fusion_score": (doc.metadata or {}).get("fusion_score"),
+            "retrieval_methods": _retrieval_methods(doc.metadata or {}),
             "content": doc.page_content,
         }
         for doc in docs
@@ -81,6 +94,7 @@ def _build_rerank_trace(
                     "chunk_index": meta.get("chunk_index"),
                     "source": meta.get("source"),
                     "fusion_score": meta.get("fusion_score"),
+                    "retrieval_methods": _retrieval_methods(meta),
                     "rerank_logit": raw_logits.get(doc_id),
                     "rerank_score": score,
                     "selected": doc_id in selected_ids,

@@ -7,7 +7,11 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 from app.db.document_store import chunk_to_document, list_chunks_for_document
 from app.services.dense_retriever import DenseRetriever
-from app.services.document_fusion import fuse_documents, merge_hit_lists
+from app.services.document_fusion import (
+    filter_fused_documents,
+    fuse_documents,
+    merge_hit_lists,
+)
 from app.services.embedder import embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
@@ -84,6 +88,11 @@ class QueryService:
             sparse_hits,
             dense_weight=settings.DENSE_WEIGHT,
             sparse_weight=settings.SPARSE_WEIGHT,
+        )
+        fused = filter_fused_documents(
+            fused,
+            min_score=settings.FUSION_MIN_SCORE,
+            min_docs=settings.FUSION_MIN_DOCS,
         )
 
         if not fused:

@@ -14,6 +14,20 @@ def chunk_key(doc: Document) -> str:
     return doc.page_content.strip()
 
 
+def retrieval_methods_for_key(
+    key: str,
+    dense_raw: dict[str, float],
+    sparse_raw: dict[str, float],
+) -> list[str]:
+    """Return retrieval channels that returned this chunk (dense, sparse, or both)."""
+    methods: list[str] = []
+    if key in dense_raw:
+        methods.append("dense")
+    if key in sparse_raw:
+        methods.append("sparse")
+    return methods
+
+
 def min_max_normalize(scores: dict[str, float]) -> dict[str, float]:
     if not scores:
         return {}
@@ -85,6 +99,9 @@ def fuse_documents(
             metadata["sparse_score"] = sparse_raw[key]
         metadata["sparse_norm"] = sn
         metadata["fusion_score"] = fusion_score
+        metadata["retrieval_methods"] = retrieval_methods_for_key(
+            key, dense_raw, sparse_raw
+        )
         fused.append(Document(page_content=base.page_content, metadata=metadata))
 
     fused.sort(
@@ -94,4 +111,35 @@ def fuse_documents(
     return fused
 
 
-__all__ = ["chunk_key", "fuse_documents", "merge_hit_lists", "min_max_normalize"]
+def fusion_score(doc: Document) -> float:
+    return float((doc.metadata or {}).get("fusion_score", 0.0))
+
+
+def filter_fused_documents(
+    fused: list[Document],
+    *,
+    min_score: float,
+    min_docs: int = 10,
+) -> list[Document]:
+    """Drop low fusion-score docs, but keep at least min(min_docs, len(fused)) by score."""
+    if not fused:
+        return []
+
+    floor = min(min_docs, len(fused))
+    qualified = [doc for doc in fused if fusion_score(doc) >= min_score]
+
+    if len(qualified) >= floor:
+        return qualified
+
+    return fused[:floor]
+
+
+__all__ = [
+    "chunk_key",
+    "filter_fused_documents",
+    "fuse_documents",
+    "fusion_score",
+    "merge_hit_lists",
+    "min_max_normalize",
+    "retrieval_methods_for_key",
+]

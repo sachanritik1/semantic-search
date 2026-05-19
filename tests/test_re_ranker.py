@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from app.services.re_ranker import (
     RerankResult,
     _apply_ranking,
+    _docs_to_trace_list,
     _normalize_scores,
     _select_relevant_entries,
     re_rank_docs,
@@ -96,3 +97,22 @@ def test_re_rank_docs_empty_input():
     result = re_rank_docs("query", [])
     assert result.failed is False
     assert result.docs == []
+
+
+def test_docs_to_trace_list_includes_retrieval_methods():
+    docs = [
+        Document(
+            page_content="both",
+            metadata={
+                "chunk_id": "c1",
+                "retrieval_methods": ["dense", "sparse"],
+            },
+        ),
+        Document(
+            page_content="dense only",
+            metadata={"chunk_id": "c2", "dense_score": 0.5},
+        ),
+    ]
+    traced = _docs_to_trace_list(docs)
+    assert traced[0]["retrieval_methods"] == ["dense", "sparse"]
+    assert traced[1]["retrieval_methods"] == ["dense"]
