@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     # Semantic /ask response cache (in-process, TTL-only eviction)
     SEMANTIC_CACHE_ENABLED: bool = True
-    SEMANTIC_CACHE_THRESHOLD: float = 0.92
+    SEMANTIC_CACHE_THRESHOLD: float = 0.85
     SEMANTIC_CACHE_TTL_SECONDS: int = 3600
 
     class Config:
