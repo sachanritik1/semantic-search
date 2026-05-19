@@ -15,12 +15,14 @@ export interface AskResponse {
 	response: string;
 	original_question: string;
 	enhanced_question: string;
+	enhanced_questions?: string[];
 	cache_hit?: boolean;
 }
 
 export interface EnhanceResponse {
 	original: string;
 	enhanced: string;
+	enhanced_queries: string[];
 }
 
 export interface IngestResponse {

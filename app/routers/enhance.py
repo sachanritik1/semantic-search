@@ -13,5 +13,11 @@ def enhance_query(
     query_enhancer: QueryEnhancer = Depends(get_query_enhancer),
 ):
     """Rewrite a user query for better retrieval (standalone test endpoint)."""
-    enhanced = query_enhancer.enhance(request.question) or request.question
-    return EnhanceResponse(original=request.question, enhanced=enhanced)
+    queries = query_enhancer.enhance(request.question)
+    if not queries:
+        queries = [request.question]
+    return EnhanceResponse(
+        original=request.question,
+        enhanced=" | ".join(queries),
+        enhanced_queries=queries,
+    )

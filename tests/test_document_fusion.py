@@ -1,7 +1,12 @@
 import pytest
 from langchain_core.documents import Document
 
-from app.services.document_fusion import chunk_key, fuse_documents, min_max_normalize
+from app.services.document_fusion import (
+    chunk_key,
+    fuse_documents,
+    merge_hit_lists,
+    min_max_normalize,
+)
 
 
 def test_chunk_key_prefers_chunk_id():
@@ -15,6 +20,19 @@ def test_min_max_normalize_single_value():
 
 def test_min_max_normalize_range():
     assert min_max_normalize({"a": 0.0, "b": 10.0}) == {"a": 0.0, "b": 1.0}
+
+
+def test_merge_hit_lists_keeps_max_score_per_chunk():
+    hits = [
+        (Document(page_content="shared", metadata={"chunk_id": "c1"}), 0.4),
+        (Document(page_content="shared", metadata={"chunk_id": "c1"}), 0.9),
+        (Document(page_content="other", metadata={"chunk_id": "c2"}), 0.5),
+    ]
+    merged = merge_hit_lists(hits)
+    assert len(merged) == 2
+    by_key = {chunk_key(doc): score for doc, score in merged}
+    assert by_key["c1"] == 0.9
+    assert by_key["c2"] == 0.5
 
 
 def test_fuse_documents_dedupes_by_chunk_id():

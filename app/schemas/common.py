@@ -13,3 +13,4 @@ class AskRequest(BaseModel):
 class EnhanceResponse(BaseModel):
     original: str
     enhanced: str
+    enhanced_queries: list[str]

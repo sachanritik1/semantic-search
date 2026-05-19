@@ -25,6 +25,18 @@ def min_max_normalize(scores: dict[str, float]) -> dict[str, float]:
     return {key: (value - lo) / span for key, value in scores.items()}
 
 
+def merge_hit_lists(
+    hits: list[tuple[Document, float]],
+) -> list[tuple[Document, float]]:
+    """Dedupe hits by chunk_key, keeping the maximum raw score per chunk."""
+    best: dict[str, tuple[Document, float]] = {}
+    for doc, score in hits:
+        key = chunk_key(doc)
+        if key not in best or score > best[key][1]:
+            best[key] = (doc, score)
+    return list(best.values())
+
+
 def fuse_documents(
     dense_hits: list[tuple[Document, float]],
     sparse_hits: list[tuple[Document, float]],
@@ -82,4 +94,4 @@ def fuse_documents(
     return fused
 
 
-__all__ = ["chunk_key", "fuse_documents", "min_max_normalize"]
+__all__ = ["chunk_key", "fuse_documents", "merge_hit_lists", "min_max_normalize"]

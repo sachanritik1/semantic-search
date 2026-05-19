@@ -65,7 +65,13 @@ function EnhanceTab() {
 			{enhance.isSuccess ? (
 				<div className="grid gap-4 sm:grid-cols-2">
 					<ResultPanel title="Original">{enhance.data.original}</ResultPanel>
-					<ResultPanel title="Enhanced">{enhance.data.enhanced}</ResultPanel>
+					<ResultPanel title="Enhanced queries">
+						<ul className="m-0 list-inside list-disc space-y-1">
+							{enhance.data.enhanced_queries.map((q) => (
+								<li key={q}>{q}</li>
+							))}
+						</ul>
+					</ResultPanel>
 				</div>
 			) : null}
 		</form>

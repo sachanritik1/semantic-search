@@ -91,10 +91,22 @@ export function AskSection({ documentId }: AskSectionProps) {
 										<span className="font-medium">Original:</span>{" "}
 										{ask.data.original_question}
 									</p>
-									<p className="m-0">
-										<span className="font-medium">Enhanced:</span>{" "}
-										{ask.data.enhanced_question}
-									</p>
+									{ask.data.enhanced_questions &&
+									ask.data.enhanced_questions.length > 0 ? (
+										<div className="m-0">
+											<p className="m-0 font-medium">Enhanced queries:</p>
+											<ul className="mt-1 list-inside list-disc space-y-1">
+												{ask.data.enhanced_questions.map((q) => (
+													<li key={q}>{q}</li>
+												))}
+											</ul>
+										</div>
+									) : (
+										<p className="m-0">
+											<span className="font-medium">Enhanced:</span>{" "}
+											{ask.data.enhanced_question}
+										</p>
+									)}
 								</div>
 							</details>
 						</div>

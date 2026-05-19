@@ -103,7 +103,7 @@ export function FileField({
 				name={field.name}
 				type="file"
 				accept={accept}
-				className="block w-full text-sm text-[var(--sea-ink)] file:mr-4 file:rounded-md file:border-0 file:bg-[var(--lagoon)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-[var(--lagoon-deep)]"
+				className="block w-full text-sm text-(--sea-ink) file:mr-4 file:cursor-pointer file:rounded-md file:border file:border-(--chip-line) file:bg-(--lagoon) file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white file:transition-colors hover:file:bg-(--lagoon-deep) dark:file:border-(--chip-line) dark:file:bg-(--chip-bg) dark:file:text-(--sea-ink) dark:hover:file:bg-(--link-bg-hover)"
 				aria-invalid={isInvalid}
 				onBlur={field.handleBlur}
 				onChange={(event) => {
