@@ -19,6 +19,20 @@ export interface AskResponse {
 	cache_hit?: boolean;
 }
 
+export interface AskStreamMeta {
+	original_question: string;
+	enhanced_question: string;
+	enhanced_questions?: string[];
+	cache_hit?: boolean;
+}
+
+export interface AskStreamHandlers {
+	onMeta?: (meta: AskStreamMeta) => void;
+	onToken?: (text: string) => void;
+	onDone?: (data: { cache_hit: boolean }) => void;
+	onError?: (message: string) => void;
+}
+
 export interface EnhanceResponse {
 	original: string;
 	enhanced: string;

@@ -1,18 +1,33 @@
+import { useEffect, useRef, useState } from "react";
 import { ApiErrorAlert } from "#/components/rag/ApiErrorAlert.tsx";
 import { AnswerContent } from "#/components/rag/AnswerContent.tsx";
 import { WorkspacePanel } from "#/components/rag/WorkspacePanel.tsx";
 import { FieldGroup } from "#/components/ui/field.tsx";
 import { useAppForm } from "#/hooks/use-app-form.ts";
-import { useAskMutation } from "#/lib/api/hooks.ts";
+import { askStream } from "#/lib/api/endpoints.ts";
+import { ApiError } from "#/lib/api/client.ts";
+import type { AskStreamMeta } from "#/lib/api/types.ts";
 import { questionSchema } from "#/lib/forms/schemas.ts";
+
+type AskStatus = "idle" | "preparing" | "streaming" | "done" | "error";
 
 interface AskSectionProps {
 	documentId: string | null;
 }
 
 export function AskSection({ documentId }: AskSectionProps) {
-	const ask = useAskMutation();
+	const [status, setStatus] = useState<AskStatus>("idle");
+	const [streamingText, setStreamingText] = useState("");
+	const [meta, setMeta] = useState<AskStreamMeta | null>(null);
+	const [error, setError] = useState<Error | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
 	const canAsk = Boolean(documentId);
+
+	useEffect(() => {
+		return () => {
+			abortRef.current?.abort();
+		};
+	}, []);
 
 	const form = useAppForm({
 		defaultValues: { question: "" },
@@ -21,12 +36,54 @@ export function AskSection({ documentId }: AskSectionProps) {
 			if (!documentId) {
 				return;
 			}
-			await ask.mutateAsync({
-				question: value.question,
-				documentId,
-			});
+
+			abortRef.current?.abort();
+			const controller = new AbortController();
+			abortRef.current = controller;
+
+			setStatus("preparing");
+			setStreamingText("");
+			setMeta(null);
+			setError(null);
+
+			try {
+				await askStream(
+					value.question,
+					documentId,
+					{
+						onMeta: (payload) => {
+							setMeta(payload);
+						},
+						onToken: (text) => {
+							setStatus((current) =>
+								current === "preparing" ? "streaming" : current,
+							);
+							setStreamingText((current) => current + text);
+						},
+						onDone: () => {
+							setStatus("done");
+						},
+						onError: (message) => {
+							setError(new Error(message));
+							setStatus("error");
+						},
+					},
+					controller.signal,
+				);
+				setStatus((current) => (current === "error" ? "error" : "done"));
+			} catch (err) {
+				if (controller.signal.aborted) {
+					return;
+				}
+				setError(err instanceof Error ? err : new Error(String(err)));
+				setStatus("error");
+			}
 		},
 	});
+
+	const isBusy = status === "preparing" || status === "streaming";
+	const hasAnswer =
+		streamingText.length > 0 || status === "done" || status === "streaming";
 
 	return (
 		<section className="space-y-3">
@@ -34,7 +91,7 @@ export function AskSection({ documentId }: AskSectionProps) {
 			<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
 				<WorkspacePanel
 					title="Your question"
-					description="Runs enhance → retrieve → rerank → generate. May take 10–30 seconds."
+					description="Runs enhance → retrieve → rerank → generate. Answer streams as tokens arrive."
 					className="min-h-[22rem]"
 				>
 					{!canAsk ? (
@@ -63,10 +120,20 @@ export function AskSection({ documentId }: AskSectionProps) {
 									)}
 								</form.AppField>
 							</FieldGroup>
-							<form.SubmitButton label="Ask" disabled={!canAsk} className="w-fit" />
+							<form.SubmitButton
+								label="Ask"
+								disabled={!canAsk || isBusy}
+								className="w-fit"
+							/>
 						</form.AppForm>
 
-						{ask.isError ? <ApiErrorAlert error={ask.error} /> : null}
+						{status === "error" && error ? (
+							error instanceof ApiError ? (
+								<ApiErrorAlert error={error} />
+							) : (
+								<p className="m-0 text-sm text-destructive">{error.message}</p>
+							)
+						) : null}
 					</form>
 				</WorkspacePanel>
 
@@ -75,44 +142,53 @@ export function AskSection({ documentId }: AskSectionProps) {
 					description="Grounded response from the selected document."
 					className="min-h-[22rem]"
 				>
-					{ask.isPending ? (
-						<p className="m-0 text-sm text-(--sea-ink-soft)">Generating answer…</p>
+					{status === "preparing" ? (
+						<p className="m-0 text-sm text-(--sea-ink-soft)">
+							Retrieving context…
+						</p>
 					) : null}
 
-					{ask.isSuccess ? (
+					{hasAnswer ? (
 						<div className="flex flex-1 flex-col gap-4 overflow-hidden">
-							<AnswerContent content={ask.data.response} embedded />
-							<details className="shrink-0 rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
-								<summary className="cursor-pointer font-medium text-(--sea-ink)">
-									Query enhancement
-								</summary>
-								<div className="mt-2 space-y-2">
-									<p className="m-0">
-										<span className="font-medium">Original:</span>{" "}
-										{ask.data.original_question}
-									</p>
-									{ask.data.enhanced_questions &&
-									ask.data.enhanced_questions.length > 0 ? (
-										<div className="m-0">
-											<p className="m-0 font-medium">Enhanced queries:</p>
-											<ul className="mt-1 list-inside list-disc space-y-1">
-												{ask.data.enhanced_questions.map((q) => (
-													<li key={q}>{q}</li>
-												))}
-											</ul>
-										</div>
-									) : (
+							<AnswerContent content={streamingText} embedded />
+							{meta ? (
+								<details className="shrink-0 rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
+									<summary className="cursor-pointer font-medium text-(--sea-ink)">
+										Query enhancement
+									</summary>
+									<div className="mt-2 space-y-2">
 										<p className="m-0">
-											<span className="font-medium">Enhanced:</span>{" "}
-											{ask.data.enhanced_question}
+											<span className="font-medium">Original:</span>{" "}
+											{meta.original_question}
 										</p>
-									)}
-								</div>
-							</details>
+										{meta.enhanced_questions &&
+										meta.enhanced_questions.length > 0 ? (
+											<div className="m-0">
+												<p className="m-0 font-medium">Enhanced queries:</p>
+												<ul className="mt-1 list-inside list-disc space-y-1">
+													{meta.enhanced_questions.map((q) => (
+														<li key={q}>{q}</li>
+													))}
+												</ul>
+											</div>
+										) : (
+											<p className="m-0">
+												<span className="font-medium">Enhanced:</span>{" "}
+												{meta.enhanced_question}
+											</p>
+										)}
+										{meta.cache_hit ? (
+											<p className="m-0 text-xs text-(--sea-ink-soft)">
+												Served from semantic cache
+											</p>
+										) : null}
+									</div>
+								</details>
+							) : null}
 						</div>
 					) : null}
 
-					{!ask.isPending && !ask.isSuccess && !ask.isError ? (
+					{status === "idle" ? (
 						<p className="m-0 text-sm text-(--sea-ink-soft)">
 							Submit a question to see the answer here.
 						</p>

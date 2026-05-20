@@ -1,8 +1,11 @@
 # app/llm/gemini_llm.py
 
-from app.llm.base import BaseLLM, LLMResponse
+from collections.abc import Iterator
+
 from google import genai
 from google.genai import types
+
+from app.llm.base import BaseLLM, LLMResponse
 
 
 
@@ -46,3 +49,24 @@ class GeminiLLM(BaseLLM):
             raw_response=response,
             usage=usage,
         )
+
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        model: str | None = None,
+    ) -> Iterator[str]:
+        use_model = model or self.model
+
+        for chunk in self.client.models.generate_content_stream(  # type: ignore
+            model=use_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            ),
+        ):
+            if chunk.text:
+                yield chunk.text

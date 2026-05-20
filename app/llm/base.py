@@ -1,6 +1,7 @@
     # app/llm/base.py
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
@@ -43,6 +44,20 @@ class BaseLLM(ABC):
         """
         pass
 
+    @abstractmethod
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = None,
+    ) -> Iterator[str]:
+        """
+        Stream text deltas from the LLM.
+        """
+        pass
+
     async def generate_async(
         self,
         prompt: str,
@@ -66,3 +81,38 @@ class BaseLLM(ABC):
                 model=model,
             ),
         )
+
+    async def stream_generate_async(
+        self,
+        prompt: str,
+        *,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = None,
+    ) -> AsyncIterator[str]:
+        """
+        Default async wrapper that yields sync stream chunks from a thread.
+        """
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def _run() -> None:
+            try:
+                for chunk in self.stream_generate(
+                    prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model,
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        await loop.run_in_executor(None, _run)
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk

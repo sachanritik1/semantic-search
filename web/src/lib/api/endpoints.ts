@@ -1,6 +1,9 @@
 import { apiFetch, apiPostFormData, apiPostJson } from "#/lib/api/client.ts";
+import { postSse } from "#/lib/api/sse.ts";
 import type {
 	AskResponse,
+	AskStreamHandlers,
+	AskStreamMeta,
 	EnhanceResponse,
 	HealthResponse,
 	IngestResponse,
@@ -29,6 +32,41 @@ export function ask(question: string, documentId: string) {
 		question,
 		document_id: documentId,
 	} satisfies AskRequest);
+}
+
+export function askStream(
+	question: string,
+	documentId: string,
+	handlers: AskStreamHandlers,
+	signal?: AbortSignal,
+) {
+	return postSse(
+		"/ask/stream",
+		{
+			question,
+			document_id: documentId,
+		} satisfies AskRequest,
+		(event, data) => {
+			if (event === "meta") {
+				handlers.onMeta?.(data as AskStreamMeta);
+				return;
+			}
+			if (event === "token") {
+				const payload = data as { text: string };
+				handlers.onToken?.(payload.text);
+				return;
+			}
+			if (event === "done") {
+				handlers.onDone?.(data as { cache_hit: boolean });
+				return;
+			}
+			if (event === "error") {
+				const payload = data as { message: string };
+				handlers.onError?.(payload.message);
+			}
+		},
+		signal,
+	);
 }
 
 export function enhance(question: string) {

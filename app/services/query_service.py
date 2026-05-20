@@ -1,10 +1,10 @@
 import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from langchain_core.documents import Document
 
 from app.config import settings
-
-logger = logging.getLogger(__name__)
 from app.db.document_store import chunk_to_document, list_chunks_for_document
 from app.services.dense_retriever import DenseRetriever
 from app.services.document_fusion import (
@@ -20,6 +20,16 @@ from app.services.semantic_cache import SemanticAskCache
 from app.services.sparse_retriever import SparseRetriever
 from app.utils.prompts import build_prompt
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PrepareResult:
+    result_base: dict
+    prompt_text: str | None
+    cached_response: str | None
+    cache_hit: bool
+
 
 class QueryService:
     def __init__(
@@ -32,11 +42,19 @@ class QueryService:
         self.query_enhancer = query_enhancer
         self.semantic_cache = semantic_cache
 
-    async def ask(self, question: str, *, document_id: str) -> dict:
+    def _prepare_ask(self, question: str, *, document_id: str) -> PrepareResult:
         if self.semantic_cache:
             cached = self.semantic_cache.lookup(question, document_id)
             if cached is not None:
-                return {**cached, "cache_hit": True}
+                return PrepareResult(
+                    result_base={
+                        "original_question": cached["original_question"],
+                        "enhanced_question": cached["enhanced_question"],
+                    },
+                    prompt_text=None,
+                    cached_response=cached["response"],
+                    cache_hit=True,
+                )
 
         queries = self.query_enhancer.enhance(question)
         if not queries:
@@ -54,15 +72,11 @@ class QueryService:
                 "No chunks found for document_id=%s; answering without retrieval context",
                 document_id,
             )
-            prompt_text = build_prompt(docs=[], question=question)
-            response = self.llm_service.generate_text(prompt_text)
-            return self._complete_ask(
-                question,
-                document_id,
-                {
-                    **result_base,
-                    "response": response.content,
-                },
+            return PrepareResult(
+                result_base=result_base,
+                prompt_text=build_prompt(docs=[], question=question),
+                cached_response=None,
+                cache_hit=False,
             )
 
         all_dense: list[tuple[Document, float]] = []
@@ -96,15 +110,11 @@ class QueryService:
         )
 
         if not fused:
-            prompt_text = build_prompt(docs=[], question=question)
-            response = self.llm_service.generate_text(prompt_text)
-            return self._complete_ask(
-                question,
-                document_id,
-                {
-                    **result_base,
-                    "response": response.content,
-                },
+            return PrepareResult(
+                result_base=result_base,
+                prompt_text=build_prompt(docs=[], question=question),
+                cached_response=None,
+                cache_hit=False,
             )
 
         rerank_result = re_rank_docs(
@@ -128,16 +138,59 @@ class QueryService:
             question=question,
             search_query=search_query,
         )
-        response = self.llm_service.generate_text(prompt_text)
+        return PrepareResult(
+            result_base=result_base,
+            prompt_text=prompt_text,
+            cached_response=None,
+            cache_hit=False,
+        )
 
+    async def ask(self, question: str, *, document_id: str) -> dict:
+        prepared = self._prepare_ask(question, document_id=document_id)
+        if prepared.cache_hit:
+            return {**prepared.result_base, "response": prepared.cached_response, "cache_hit": True}
+
+        response = self.llm_service.generate_text(prepared.prompt_text)
         return self._complete_ask(
             question,
             document_id,
             {
-                **result_base,
+                **prepared.result_base,
                 "response": response.content,
             },
         )
+
+    async def stream_ask(
+        self,
+        question: str,
+        *,
+        document_id: str,
+    ) -> AsyncIterator[dict]:
+        prepared = self._prepare_ask(question, document_id=document_id)
+        meta = {**prepared.result_base}
+        if prepared.cache_hit:
+            meta["cache_hit"] = True
+        yield {"event": "meta", "data": meta}
+
+        if prepared.cache_hit:
+            yield {"event": "token", "data": {"text": prepared.cached_response}}
+            yield {"event": "done", "data": {"cache_hit": True}}
+            return
+
+        full_text: list[str] = []
+        async for chunk in self.llm_service.stream_text(prepared.prompt_text):
+            full_text.append(chunk)
+            yield {"event": "token", "data": {"text": chunk}}
+
+        self._complete_ask(
+            question,
+            document_id,
+            {
+                **prepared.result_base,
+                "response": "".join(full_text),
+            },
+        )
+        yield {"event": "done", "data": {"cache_hit": False}}
 
     def _complete_ask(
         self,
