@@ -1,5 +1,12 @@
-import { Badge } from "#/components/ui/badge.tsx";
 import { WorkspacePanel } from "#/components/rag/WorkspacePanel.tsx";
+import { Badge } from "#/components/ui/badge.tsx";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
 import type { DocumentSession } from "#/lib/session/documents.ts";
 
 interface DocumentScopeBarProps {
@@ -22,6 +29,7 @@ export function DocumentScopeBar({
 	onActiveDocumentChange,
 }: DocumentScopeBarProps) {
 	const { activeDocumentId, recent } = session;
+	const hasDocuments = recent.length > 0;
 
 	return (
 		<WorkspacePanel
@@ -41,31 +49,33 @@ export function DocumentScopeBar({
 				</p>
 			)}
 
-			<label className="mt-auto flex flex-col gap-1.5">
+			<div className="mt-auto flex flex-col gap-1.5">
 				<span className="text-xs font-medium text-(--sea-ink-soft)">
-					{recent.length > 0 ? "Recent documents" : "Documents"}
+					{hasDocuments ? "Recent documents" : "Documents"}
 				</span>
-				<select
-					className="w-full rounded-md border border-(--line) bg-transparent px-3 py-2 text-sm text-(--sea-ink) outline-none focus-visible:border-(--lagoon) disabled:cursor-not-allowed disabled:opacity-60"
-					value={activeDocumentId ?? ""}
-					disabled={recent.length === 0}
-					onChange={(event) => {
-						const value = event.target.value;
-						onActiveDocumentChange(value || null);
-					}}
+				<Select
+					value={activeDocumentId ?? undefined}
+					disabled={!hasDocuments}
+					onValueChange={(value) => onActiveDocumentChange(value || null)}
 				>
-					<option value="">
-						{recent.length > 0
-							? "Select a document…"
-							: "Ingest a PDF to get started"}
-					</option>
-					{recent.map((doc) => (
-						<option key={doc.documentId} value={doc.documentId}>
-							{formatDocumentLabel(doc.documentId, doc.source)}
-						</option>
-					))}
-				</select>
-			</label>
+					<SelectTrigger className="w-full">
+						<SelectValue
+							placeholder={
+								hasDocuments
+									? "Select a document…"
+									: "Ingest a PDF to get started"
+							}
+						/>
+					</SelectTrigger>
+					<SelectContent position="popper">
+						{recent.map((doc) => (
+							<SelectItem key={doc.documentId} value={doc.documentId}>
+								{formatDocumentLabel(doc.documentId, doc.source)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
 		</WorkspacePanel>
 	);
 }
