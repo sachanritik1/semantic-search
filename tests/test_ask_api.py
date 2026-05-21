@@ -1,8 +1,11 @@
+import asyncio
 import json
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.dependencies import get_query_service
 from app.main import app
 
@@ -77,4 +80,33 @@ def test_ask_stream_returns_sse_events():
 def test_ask_stream_requires_document_id():
     response = client.post("/ask/stream", json={"question": "What is this about?"})
     assert response.status_code == 422
+
+
+async def _slow_stream_ask(question: str, *, document_id: str):
+    yield {
+        "event": "meta",
+        "data": {
+            "original_question": question,
+            "enhanced_question": question,
+        },
+    }
+    await asyncio.sleep(0.05)
+    yield {"event": "done", "data": {"cache_hit": False}}
+
+
+def test_ask_stream_emits_heartbeats(monkeypatch):
+    monkeypatch.setattr(settings, "SSE_HEARTBEAT_INTERVAL_S", 0.02)
+    mock_service = MagicMock()
+    mock_service.stream_ask = _slow_stream_ask
+    app.dependency_overrides[get_query_service] = lambda: mock_service
+    try:
+        response = client.post(
+            "/ask/stream",
+            json={"question": "What is this about?", "document_id": "doc-1"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_query_service, None)
+
+    assert response.status_code == 200
+    assert ": ping" in response.text
 

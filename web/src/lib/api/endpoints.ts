@@ -1,5 +1,5 @@
 import { apiFetch, apiPostFormData, apiPostJson } from "#/lib/api/client.ts";
-import { postSse } from "#/lib/api/sse.ts";
+import { postSseWithRetry, SseTerminalError } from "#/lib/api/sse.ts";
 import type {
 	AskResponse,
 	AskStreamHandlers,
@@ -40,7 +40,7 @@ export function askStream(
 	handlers: AskStreamHandlers,
 	signal?: AbortSignal,
 ) {
-	return postSse(
+	return postSseWithRetry(
 		"/ask/stream",
 		{
 			question,
@@ -66,7 +66,16 @@ export function askStream(
 			}
 		},
 		signal,
-	);
+		{
+			onRetry: handlers.onRetry,
+		},
+	).catch((err) => {
+		if (err instanceof SseTerminalError) {
+			handlers.onError?.(err.message);
+			return;
+		}
+		throw err;
+	});
 }
 
 export function enhance(question: string) {

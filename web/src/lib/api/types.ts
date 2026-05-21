@@ -31,6 +31,7 @@ export interface AskStreamHandlers {
 	onToken?: (text: string) => void;
 	onDone?: (data: { cache_hit: boolean }) => void;
 	onError?: (message: string) => void;
+	onRetry?: (attempt: number, reason: string) => void;
 }
 
 export interface EnhanceResponse {

@@ -3,10 +3,11 @@ import logging
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app.config import settings
 from app.dependencies import get_query_service
 from app.schemas.common import AskRequest
 from app.services.query_service import QueryService
-from app.utils.sse import format_sse_event, sse_from_events
+from app.utils.sse import format_sse_event, sse_from_events, with_heartbeats
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,12 @@ async def _ask_stream_generator(
     document_id: str,
 ):
     try:
-        async for frame in sse_from_events(
+        frames = sse_from_events(
             query_service.stream_ask(question, document_id=document_id),
+        )
+        async for frame in with_heartbeats(
+            frames,
+            interval_s=settings.SSE_HEARTBEAT_INTERVAL_S,
         ):
             yield frame
     except Exception as exc:

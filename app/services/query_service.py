@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -21,6 +22,11 @@ from app.services.sparse_retriever import SparseRetriever
 from app.utils.prompts import build_prompt
 
 logger = logging.getLogger(__name__)
+
+# Background tasks that must outlive a cancelled SSE generator so the LLM
+# call still completes and its result is persisted to the semantic cache.
+# We hold strong references here to prevent garbage collection.
+_pending_completions: set[asyncio.Task] = set()
 
 
 @dataclass
@@ -177,19 +183,52 @@ class QueryService:
             yield {"event": "done", "data": {"cache_hit": True}}
             return
 
+        # Detach LLM generation so it completes even if the SSE consumer
+        # disconnects mid-stream. The bg task writes the full response to the
+        # semantic cache; we forward chunks to the wire while connected.
+        queue: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
         full_text: list[str] = []
-        async for chunk in self.llm_service.stream_text(prepared.prompt_text):
-            full_text.append(chunk)
-            yield {"event": "token", "data": {"text": chunk}}
 
-        self._complete_ask(
-            question,
-            document_id,
-            {
-                **prepared.result_base,
-                "response": "".join(full_text),
-            },
-        )
+        async def _drive_and_cache() -> None:
+            try:
+                async for chunk in self.llm_service.stream_text(prepared.prompt_text):
+                    full_text.append(chunk)
+                    queue.put_nowait(chunk)
+            except BaseException as exc:
+                queue.put_nowait(exc)
+                logger.exception("Detached LLM stream failed for document_id=%s", document_id)
+                return
+            finally:
+                queue.put_nowait(_SENTINEL)
+
+            try:
+                self._complete_ask(
+                    question,
+                    document_id,
+                    {
+                        **prepared.result_base,
+                        "response": "".join(full_text),
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to persist completed ask to cache for document_id=%s",
+                    document_id,
+                )
+
+        bg_task = asyncio.create_task(_drive_and_cache())
+        _pending_completions.add(bg_task)
+        bg_task.add_done_callback(_pending_completions.discard)
+
+        while True:
+            item = await queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield {"event": "token", "data": {"text": item}}
+
         yield {"event": "done", "data": {"cache_hit": False}}
 
     def _complete_ask(

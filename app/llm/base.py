@@ -92,11 +92,17 @@ class BaseLLM(ABC):
     ) -> AsyncIterator[str]:
         """
         Default async wrapper that yields sync stream chunks from a thread.
+
+        The sync generator runs in a worker thread and pushes chunks onto an
+        asyncio queue. The async side yields them as they arrive, so callers
+        see true incremental streaming. Exceptions raised by the sync stream
+        are propagated through the queue and re-raised on the async side.
         """
         import asyncio
 
+        _SENTINEL = object()
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue()
 
         def _run() -> None:
             try:
@@ -107,12 +113,17 @@ class BaseLLM(ABC):
                     model=model,
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            except BaseException as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
+                loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
 
-        await loop.run_in_executor(None, _run)
+        loop.run_in_executor(None, _run)
+
         while True:
-            chunk = await queue.get()
-            if chunk is None:
-                break
-            yield chunk
+            item = await queue.get()
+            if item is _SENTINEL:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item

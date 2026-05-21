@@ -20,7 +20,9 @@ export function AskSection({ documentId }: AskSectionProps) {
 	const [streamingText, setStreamingText] = useState("");
 	const [meta, setMeta] = useState<AskStreamMeta | null>(null);
 	const [error, setError] = useState<Error | null>(null);
+	const [retryAttempt, setRetryAttempt] = useState(0);
 	const abortRef = useRef<AbortController | null>(null);
+	const maxAttempts = 3;
 	const canAsk = Boolean(documentId);
 
 	useEffect(() => {
@@ -45,6 +47,7 @@ export function AskSection({ documentId }: AskSectionProps) {
 			setStreamingText("");
 			setMeta(null);
 			setError(null);
+			setRetryAttempt(0);
 
 			try {
 				await askStream(
@@ -53,6 +56,12 @@ export function AskSection({ documentId }: AskSectionProps) {
 					{
 						onMeta: (payload) => {
 							setMeta(payload);
+							setStreamingText("");
+							setRetryAttempt(0);
+						},
+						onRetry: (attempt) => {
+							setRetryAttempt(attempt);
+							setStatus("preparing");
 						},
 						onToken: (text) => {
 							setStatus((current) =>
@@ -142,7 +151,14 @@ export function AskSection({ documentId }: AskSectionProps) {
 					description="Grounded response from the selected document."
 					className="min-h-[22rem]"
 				>
-					{status === "preparing" ? (
+					{retryAttempt > 0 ? (
+						<p className="m-0 text-sm text-(--sea-ink-soft)">
+							Connection lost — retrying (attempt {retryAttempt + 1} of{" "}
+							{maxAttempts})…
+						</p>
+					) : null}
+
+					{status === "preparing" && retryAttempt === 0 ? (
 						<p className="m-0 text-sm text-(--sea-ink-soft)">
 							Retrieving context…
 						</p>

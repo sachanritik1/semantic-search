@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     RERANK_TOP_K: int = 8
     RERANK_MIN_RELEVANCE: float = 4.0
 
+    # SSE streaming (/ask/stream)
+    SSE_HEARTBEAT_INTERVAL_S: float = 15.0
+
     # Semantic /ask response cache (in-process, TTL-only eviction)
     SEMANTIC_CACHE_ENABLED: bool = True
     SEMANTIC_CACHE_THRESHOLD: float = 0.85

@@ -231,3 +231,108 @@ async def test_ask_returns_cache_hit_on_repeat_question(isolated_ask_cache_db):
     assert second["response"] == "cached answer"
     enhancer.enhance.assert_called_once()
     llm.generate_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream(
+    isolated_ask_cache_db,
+):
+    """If the SSE consumer stops iterating early (client disconnect), the LLM
+    call must still run to completion and the full response must be written to
+    the semantic cache. The next identical question should then be a cache hit.
+    """
+
+    import asyncio
+
+    llm = MagicMock()
+
+    async def fake_stream_text(prompt: str):
+        for piece in ["Hel", "lo ", "world"]:
+            await asyncio.sleep(0)
+            yield piece
+
+    llm.stream_text = fake_stream_text
+
+    enhancer = MagicMock()
+    enhancer.enhance.return_value = ["q"]
+
+    embeddings = MagicMock()
+    embeddings.embed_query.return_value = [1.0, 0.0]
+    cache = SemanticAskCache(embeddings, threshold=0.99, ttl_seconds=3600)
+
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        semantic_cache=cache,
+    )
+
+    with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[],
+        ),
+        patch(
+            "app.services.query_service.build_prompt",
+            return_value="prompt",
+        ),
+    ):
+        gen = service.stream_ask("question?", document_id="doc-1")
+        events: list[dict] = []
+        events.append(await gen.__anext__())  # meta
+        events.append(await gen.__anext__())  # first token
+        await gen.aclose()
+
+        # Let the detached bg task complete (LLM finish + cache write).
+        for _ in range(20):
+            await asyncio.sleep(0)
+
+        # Cache must now contain the FULL response, not just the first chunk.
+        replay: list[dict] = []
+        async for ev in service.stream_ask("question?", document_id="doc-1"):
+            replay.append(ev)
+
+    assert events[0]["event"] == "meta"
+    assert events[1]["event"] == "token"
+    cached_token = next(ev for ev in replay if ev["event"] == "token")
+    assert cached_token["data"]["text"] == "Hello world"
+    assert any(ev["event"] == "done" and ev["data"]["cache_hit"] for ev in replay)
+
+
+@pytest.mark.asyncio
+async def test_stream_generate_async_yields_chunks_incrementally():
+    """Regression: the default async wrapper must NOT await the executor task
+    (which would block until the entire sync stream completes before yielding).
+    First chunk must arrive before subsequent chunks are produced.
+    """
+
+    import asyncio
+    import time
+
+    from app.llm.base import BaseLLM, LLMResponse
+
+    class _SlowSyncLLM(BaseLLM):
+        def __init__(self) -> None:
+            self.produced_at: list[float] = []
+
+        def generate(self, prompt, *, temperature=0.7, max_tokens=None, model=None):  # pragma: no cover
+            return LLMResponse(content="")
+
+        def stream_generate(self, prompt, *, temperature=0.7, max_tokens=None, model=None):
+            for piece in ["a", "b", "c"]:
+                time.sleep(0.05)
+                self.produced_at.append(time.monotonic())
+                yield piece
+
+    llm = _SlowSyncLLM()
+    received_at: list[float] = []
+    async for chunk in llm.stream_generate_async("prompt"):
+        received_at.append(time.monotonic())
+
+    # If the wrapper awaits the executor, all received_at timestamps come
+    # tightly together AFTER all produced_at timestamps. With true streaming,
+    # each received_at[i] should be near produced_at[i].
+    assert len(received_at) == 3
+    for produced, received in zip(llm.produced_at, received_at):
+        assert received - produced < 0.04, (
+            f"chunk received too long after production: {received - produced:.3f}s"
+        )
