@@ -97,34 +97,33 @@ export function AskSection({ documentId }: AskSectionProps) {
 	return (
 		<section className="space-y-3">
 			<p className="island-kicker m-0">Query path</p>
-			<div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-				<WorkspacePanel
-					title="Your question"
-					description="Runs enhance → retrieve → rerank → generate. Answer streams as tokens arrive."
-					className="min-h-[22rem]"
-				>
-					{!canAsk ? (
-						<p className="m-0 text-sm text-(--sea-ink-soft)">
-							Ingest a PDF and select it above before asking.
-						</p>
-					) : null}
+			<WorkspacePanel
+				title="Ask"
+				description="Runs enhance → retrieve → rerank → generate. Answer streams as tokens arrive."
+			>
+				{!canAsk ? (
+					<p className="m-0 text-sm text-(--sea-ink-soft)">
+						Ingest a PDF and select it above before asking.
+					</p>
+				) : null}
 
-					<form
-						id="ask-form"
-						className="flex flex-1 flex-col gap-4"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void form.handleSubmit();
-						}}
-					>
-						<form.AppForm>
+				<form
+					id="ask-form"
+					className="flex flex-col gap-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void form.handleSubmit();
+					}}
+				>
+					<form.AppForm>
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
 							<FieldGroup className="flex-1 gap-4">
 								<form.AppField name="question">
 									{(field) => (
 										<field.TextAreaField
 											label="Question"
 											placeholder="What are the main findings in the document?"
-											rows={6}
+											rows={3}
 										/>
 									)}
 								</form.AppField>
@@ -132,25 +131,23 @@ export function AskSection({ documentId }: AskSectionProps) {
 							<form.SubmitButton
 								label="Ask"
 								disabled={!canAsk || isBusy}
-								className="w-fit"
+								className="sm:self-end"
 							/>
-						</form.AppForm>
+						</div>
+					</form.AppForm>
 
-						{status === "error" && error ? (
-							error instanceof ApiError ? (
-								<ApiErrorAlert error={error} />
-							) : (
-								<p className="m-0 text-sm text-destructive">{error.message}</p>
-							)
-						) : null}
-					</form>
-				</WorkspacePanel>
+					{status === "error" && error ? (
+						error instanceof ApiError ? (
+							<ApiErrorAlert error={error} />
+						) : (
+							<p className="m-0 text-sm text-destructive">{error.message}</p>
+						)
+					) : null}
+				</form>
 
-				<WorkspacePanel
-					title="Answer"
-					description="Grounded response from the selected document."
-					className="min-h-[22rem]"
-				>
+				<div className="border-t border-(--line) pt-4">
+					<p className="island-kicker m-0 mb-3">Answer</p>
+
 					{retryAttempt > 0 ? (
 						<p className="m-0 text-sm text-(--sea-ink-soft)">
 							Connection lost — retrying (attempt {retryAttempt + 1} of{" "}
@@ -165,10 +162,10 @@ export function AskSection({ documentId }: AskSectionProps) {
 					) : null}
 
 					{hasAnswer ? (
-						<div className="flex flex-1 flex-col gap-4 overflow-hidden">
+						<div className="flex flex-col gap-4">
 							<AnswerContent content={streamingText} embedded />
 							{meta ? (
-								<details className="shrink-0 rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
+								<details className="rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
 									<summary className="cursor-pointer font-medium text-(--sea-ink)">
 										Query enhancement
 									</summary>
@@ -209,8 +206,8 @@ export function AskSection({ documentId }: AskSectionProps) {
 							Submit a question to see the answer here.
 						</p>
 					) : null}
-				</WorkspacePanel>
-			</div>
+				</div>
+			</WorkspacePanel>
 		</section>
 	);
 }
