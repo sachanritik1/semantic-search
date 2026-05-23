@@ -30,12 +30,15 @@ class Settings(BaseSettings):
     # Reasoning
     ENABLE_REASONING: bool = False
 
-    # Database
-    DATABASE_URL: str = "sqlite:///./docstore.db"
+    # Database (PostgreSQL; run `alembic upgrade head` after `docker compose up -d`)
+    DATABASE_URL: str = (
+        "postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search"
+    )
 
     # Vector store
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION_NAME: str = "semantic-search"
+    QDRANT_API_KEY: str = ""
 
     # Multi-tenant (single-tenant default)
     DEFAULT_TENANT_ID: str = "default"

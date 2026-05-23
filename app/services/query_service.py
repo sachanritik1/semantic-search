@@ -214,7 +214,7 @@ class QueryService:
         get_client().update_current_span(
             input={"question": question, "document_id": document_id},
         )
-        # Cache lookup is fast but still touches sqlite + numpy; run off the
+        # Cache lookup is fast but still touches Postgres + numpy; run off the
         # event loop so the very first SSE write happens immediately and the
         # client can render "preparing" while we look.
         cached = await asyncio.to_thread(

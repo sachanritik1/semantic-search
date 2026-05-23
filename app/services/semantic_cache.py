@@ -38,7 +38,6 @@ class SemanticAskCache:
         self._enabled = enabled
         self._threshold = threshold
         self._ttl_seconds = ttl_seconds
-        ask_cache_store.ensure_table()
 
     def lookup(self, question: str, document_id: str) -> dict | None:
         if not self._enabled:

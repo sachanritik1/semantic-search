@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, delete, select
+from sqlalchemy import DateTime, Integer, String, Text, delete, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import JSON
 
-from app.db.document_store import Base, SessionLocal, engine
+from app.db.document_store import Base, SessionLocal
 
 _UTC = timezone.utc
+_JSON = JSON().with_variant(JSONB, "postgresql")
 
 
 class AskCacheRow(Base):
@@ -18,7 +21,7 @@ class AskCacheRow(Base):
     original_question: Mapped[str] = mapped_column(Text)
     enhanced_question: Mapped[str] = mapped_column(Text)
     response: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float]] = mapped_column(JSON)
+    embedding: Mapped[list[float]] = mapped_column(_JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         index=True,
@@ -28,10 +31,6 @@ class AskCacheRow(Base):
 
 def utc_now() -> datetime:
     return datetime.now(_UTC)
-
-
-def ensure_table() -> None:
-    AskCacheRow.__table__.create(bind=engine, checkfirst=True)
 
 
 def prune_expired(ttl_seconds: int, *, now: datetime | None = None) -> int:

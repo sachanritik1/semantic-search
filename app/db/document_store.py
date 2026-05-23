@@ -4,14 +4,18 @@ from datetime import datetime, timezone
 from typing import Iterable, List, Optional
 
 from langchain_core.documents import Document
-from sqlalchemy import JSON, DateTime, Integer, String, Text, create_engine, inspect, select, text
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.types import JSON
 
 from app.config import settings
 from app.utils.ids import content_hash
 
 CHUNK_STATUS_ACTIVE = "active"
 CHUNK_STATUS_DELETED = "deleted"
+
+_JSON = JSON().with_variant(JSONB, "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -34,42 +38,25 @@ class DocumentChunk(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     status: Mapped[str] = mapped_column(String(16), default=CHUNK_STATUS_ACTIVE, index=True)
-    meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
-    embedding: Mapped[list[float]] = mapped_column(JSON, default=list)
+    meta: Mapped[dict] = mapped_column("metadata", _JSON, default=dict)
+    embedding: Mapped[list[float]] = mapped_column(_JSON, default=list)
 
 
 DATABASE_URL = settings.DATABASE_URL
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, future=True, connect_args=connect_args)
+engine = create_engine(
+    DATABASE_URL,
+    future=True,
+    connect_args=connect_args,
+    pool_pre_ping=not DATABASE_URL.startswith("sqlite"),
+)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
 
-_MIGRATION_COLUMNS = (
-    ("document_id", "VARCHAR(36)"),
-    ("chunk_id", "VARCHAR(36)"),
-    ("tenant_id", "VARCHAR(64) DEFAULT 'default'"),
-    ("content_hash", "VARCHAR(64) DEFAULT ''"),
-    ("ingested_at", "DATETIME"),
-    ("status", "VARCHAR(16) DEFAULT 'active'"),
-)
 
-
-def _migrate_schema() -> None:
-    inspector = inspect(engine)
-    if "document_chunks" not in inspector.get_table_names():
-        return
-
-    existing = {col["name"] for col in inspector.get_columns("document_chunks")}
-    with engine.begin() as conn:
-        for name, col_type in _MIGRATION_COLUMNS:
-            if name not in existing:
-                conn.execute(text(f"ALTER TABLE document_chunks ADD COLUMN {name} {col_type}"))
-
-
-def init_db() -> None:
-    from app.db.ask_cache_store import AskCacheRow  # noqa: F401
-
-    Base.metadata.create_all(engine)
-    _migrate_schema()
+def check_db_connection() -> None:
+    """Verify the database is reachable (call at startup)."""
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
 
 
 def chunk_to_document(chunk: DocumentChunk) -> Document:

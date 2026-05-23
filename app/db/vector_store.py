@@ -14,6 +14,8 @@ def get_vector_store(embeddings: Embeddings) -> QdrantVectorStore:
         embedding=embeddings,
         url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION_NAME,
+        api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
+        create_collection_if_missing=True,
     )
 
 

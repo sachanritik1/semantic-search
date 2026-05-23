@@ -1,6 +1,6 @@
 # Semantic Search — Hybrid RAG API
 
-A FastAPI service for **retrieval-augmented generation (RAG)** over PDF documents. It combines **dense** vector search (embeddings in Qdrant) with **sparse** keyword search (BM25 over SQLite), then uses an LLM to answer questions from the retrieved context.
+A FastAPI service for **retrieval-augmented generation (RAG)** over PDF documents. It combines **dense** vector search (embeddings in Qdrant) with **sparse** keyword search (BM25 over PostgreSQL), then uses an LLM to answer questions from the retrieved context.
 
 Built as a learning and experimentation platform for hybrid retrieval, query rewriting, reranking, and multi-provider LLM integration.
 
@@ -22,7 +22,7 @@ flowchart LR
     subgraph ingest [Ingest path]
         PDF[PDF upload] --> Chunk[Chunk & embed]
         Chunk --> Qdrant[(Qdrant)]
-        Chunk --> SQLite[(SQLite doc store)]
+        Chunk --> Postgres[(Postgres doc store)]
     end
 
     subgraph query [Query path]
@@ -30,7 +30,7 @@ flowchart LR
         Enhance --> Dense[Dense retriever]
         Enhance --> Sparse[Sparse retriever]
         Dense --> Qdrant
-        Sparse --> SQLite
+        Sparse --> Postgres
         Dense --> Rerank[Reranker]
         Sparse --> Rerank
         Rerank --> Merge[Merge & dedupe]
@@ -42,7 +42,7 @@ flowchart LR
 | Component | Role |
 |-----------|------|
 | **Qdrant** | Vector store for dense (semantic) retrieval |
-| **SQLite** | Chunk metadata and text for BM25 sparse retrieval |
+| **PostgreSQL** | Chunk metadata and text for BM25 sparse retrieval |
 | **HuggingFace embeddings** | Default: `sentence-transformers/all-MiniLM-L6-v2` |
 | **CrossEncoder** | Local reranking (`cross-encoder/ms-marco-MiniLM-L-6-v2` by default) |
 | **LLM provider** | Answer generation, query enhancement, comparisons |
@@ -50,6 +50,7 @@ flowchart LR
 ## Prerequisites
 
 - Python 3.11+
+- Docker (for local PostgreSQL)
 - [Qdrant](https://qdrant.tech/) running locally (default: `http://localhost:6333`)
 - API key for your chosen LLM provider
 
@@ -65,11 +66,17 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Qdrant
+### 2. Start PostgreSQL and Qdrant
 
 ```bash
-docker run -p 6333:6333 qdrant/qdrant
+docker compose up -d
+alembic upgrade head
 ```
+
+This brings up both services defined in `docker-compose.yml`:
+
+- Postgres on `localhost:5432`
+- Qdrant on `localhost:6333` (HTTP) and `:6334` (gRPC)
 
 ### 3. Configure environment
 
@@ -93,8 +100,8 @@ OPENROUTER_MODEL=openai/gpt-oss-120b:free
 QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION_NAME=semantic-search
 
-# Optional
-DATABASE_URL=sqlite:///./docstore.db
+# Chunk metadata store (defaults match docker-compose.yml)
+DATABASE_URL=postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search
 EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 LANGFUSE_TRACING_ENABLED=true
 LANGFUSE_PUBLIC_KEY=
@@ -199,7 +206,7 @@ app/
 ├── dependencies.py      # DI wiring for services
 ├── routers/             # HTTP endpoints
 ├── services/            # Business logic (ingest, query, compare, rerank, …)
-├── db/                  # SQLite document store & Qdrant vector store
+├── db/                  # PostgreSQL document store & Qdrant vector store
 ├── llm/                 # Provider adapters (OpenAI, Gemini, OpenRouter)
 ├── schemas/             # Pydantic request/response models
 ├── prompt_templates/    # LLM prompt files
@@ -227,6 +234,13 @@ docs/improvement-plan.md # Roadmap toward production hybrid RAG
 pip install -r requirements-dev.txt
 ```
 
+### Database migrations
+
+```bash
+docker compose up -d postgres
+alembic upgrade head
+```
+
 ### Run tests
 
 ```bash
@@ -240,7 +254,7 @@ pytest
 | `LLM_PROVIDER` | `openrouter` | `openai`, `gemini`, or `openrouter` |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant HTTP endpoint |
 | `QDRANT_COLLECTION_NAME` | `semantic-search` | Collection name |
-| `DATABASE_URL` | `sqlite:///./docstore.db` | Chunk metadata store |
+| `DATABASE_URL` | `postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search` | Chunk metadata store |
 | `EMBEDDING_MODEL_NAME` | `all-MiniLM-L6-v2` | HuggingFace embedding model |
 | `RERANK_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | CrossEncoder rerank model |
 | `ENHANCER_MODEL` | _(provider default)_ | Override model for query enhancement |

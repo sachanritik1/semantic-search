@@ -21,7 +21,7 @@ logging.getLogger("app").setLevel(_log_level)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.document_store import init_db
+from app.db.document_store import check_db_connection
 from app.routers import (
     compare,
     enhance,
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
             secret_key=settings.LANGFUSE_SECRET_KEY,
             host=settings.LANGFUSE_HOST,
         )
-    init_db()
+    await asyncio.to_thread(check_db_connection)
     await _warm_reranker()
     try:
         yield

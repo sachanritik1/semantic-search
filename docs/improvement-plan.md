@@ -53,7 +53,7 @@ Hybrid RAG maintains **two retrieval indexes** tied by a **shared chunk identity
 | Index | Current stack | Production pattern |
 |--------|---------------|-------------------|
 | Dense | Qdrant | Same, with `doc_id` + `chunk_id` in payload |
-| Sparse | SQLite + BM25 rebuilt every `/ask` | Persistent BM25 (or OpenSearch/ES), or prebuilt inverted index |
+| Sparse | PostgreSQL + BM25 rebuilt every `/ask` | Persistent BM25 (or OpenSearch/ES), or prebuilt inverted index |
 | Fusion | Manual dedupe by `page_content` | RRF or weighted score merge on stable IDs |
 
 **Rule:** one logical chunk ID in both stores so delete/update/replace stay consistent.
@@ -93,17 +93,17 @@ Alternatives:
 
 | Strategy | Use when |
 |----------|----------|
-| **Hard delete** | GDPR, explicit user delete; remove from Qdrant + SQLite (and BM25 cache) by `doc_id` |
+| **Hard delete** | GDPR, explicit user delete; remove from Qdrant + PostgreSQL (and BM25 cache) by `doc_id` |
 | **Tombstone** | Large pipelines; mark deleted, async cleanup |
 | **Full reindex** | Rare; migration or corruption recovery |
 
-**Production pitfall:** deleting only SQLite or only Qdrant leaves **orphan vectors** or **ghost BM25 hits**. Deletes must be **multi-store and keyed by the same ID**.
+**Production pitfall:** deleting only PostgreSQL or only Qdrant leaves **orphan vectors** or **ghost BM25 hits**. Deletes must be **multi-store and keyed by the same ID**.
 
 ### Operational extras
 
 - **Job status**: `processing_id`, progress, failure reason.
 - **Index freshness**: metric for lag between source update and searchable index.
-- **Reconciliation job**: periodic scan for chunks in SQLite without Qdrant points (or vice versa).
+- **Reconciliation job**: periodic scan for chunks in PostgreSQL without Qdrant points (or vice versa).
 
 ---
 
@@ -113,12 +113,12 @@ Logical split exists (`POST /ingest` vs `POST /ask`) but not a production split.
 
 | Area | Status |
 |------|--------|
-| Ingest | `POST /ingest` — PDF only, dual-write to Qdrant + SQLite |
+| Ingest | `POST /ingest` — PDF only, dual-write to Qdrant + PostgreSQL |
 | Query | `POST /ask` — dense + sparse + rerank + LLM |
-| IDs | No shared `document_id` / `chunk_id` across Qdrant and SQLite |
+| IDs | No shared `document_id` / `chunk_id` across Qdrant and PostgreSQL |
 | Delete / update | None |
 | Re-ingest | Append-only; duplicates corpora |
-| BM25 | Rebuilt from all SQLite chunks on every `/ask` |
+| BM25 | Rebuilt from all PostgreSQL chunks on every `/ask` |
 | Config | Qdrant URL/collection hardcoded in `vector_store.py` |
 | Dual write | No transaction; partial failure can desync stores |
 
@@ -126,7 +126,7 @@ Key files today:
 
 - `app/main.py` — routes and orchestration
 - `app/db/vector_store.py` — Qdrant dense index
-- `app/db/document_store.py` — SQLite chunks for BM25
+- `app/db/document_store.py` — PostgreSQL chunks for BM25
 - `app/services/dense_retriever.py`, `sparse_retriever.py` — retrieval
 - `app/services/query_enhancer.py`, `re_ranker.py`, `llm_service.py` — query pipeline
 
@@ -146,7 +146,7 @@ tenant_id    (optional; default "default" for single-tenant)
 
 **Schema changes:**
 
-- SQLite `document_chunks`: add `document_id`, `chunk_id` (unique), optional `content_hash`, `ingested_at`, `status` (`active` | `deleted`).
+- PostgreSQL `document_chunks`: add `document_id`, `chunk_id` (unique), optional `content_hash`, `ingested_at`, `status` (`active` | `deleted`).
 - Qdrant payload: `{ document_id, chunk_id, source, chunk_index, tenant_id }`.
 - Use **the same `chunk_id`** as the Qdrant point ID where possible.
 
@@ -169,7 +169,7 @@ Split `main.py` orchestration into services:
 | `POST /v1/documents` | Ingest |
 | `GET /v1/documents` | List ingested docs + chunk counts |
 | `GET /v1/documents/{document_id}` | Status / metadata |
-| `DELETE /v1/documents/{document_id}` | Remove from Qdrant + SQLite |
+| `DELETE /v1/documents/{document_id}` | Remove from Qdrant + PostgreSQL |
 | `PUT /v1/documents/{document_id}` | Replace (= delete + ingest) |
 | `POST /v1/ask` | Query only |
 
@@ -185,7 +185,7 @@ Split `main.py` orchestration into services:
 
 | Item | Change |
 |------|--------|
-| **Persistent sparse index** | Build BM25 on ingest completion; store serialized index or SQLite FTS5 |
+| **Persistent sparse index** | Build BM25 on ingest completion; store serialized index or PostgreSQL full-text search |
 | **Async ingest** | `POST /documents` returns `job_id`; `GET /jobs/{job_id}` for status |
 | **Optional queue** | Redis + worker, or in-process `asyncio` + DB job table for MVP |
 
@@ -239,7 +239,7 @@ flowchart TB
 
   subgraph stores [Stores]
     Qdrant[(Qdrant)]
-    SQLite[(SQLite chunks + metadata)]
+    PostgreSQL[(PostgreSQL chunks + metadata)]
     BM25[BM25 index cache]
   end
 
@@ -249,18 +249,18 @@ flowchart TB
 
   IngestAPI --> Parse --> Chunk --> Embed --> DualWrite
   DualWrite --> Qdrant
-  DualWrite --> SQLite
+  DualWrite --> PostgreSQL
   DualWrite --> BM25
 
   QueryAPI --> Enhance --> Dense --> Fuse
   Enhance --> Sparse
   Dense --> Qdrant
   Sparse --> BM25
-  BM25 --> SQLite
+  BM25 --> PostgreSQL
   Fuse --> LLM
 
   AdminAPI --> Qdrant
-  AdminAPI --> SQLite
+  AdminAPI --> PostgreSQL
   AdminAPI --> BM25
 ```
 
@@ -270,7 +270,7 @@ flowchart TB
 
 | Step | Effort | Impact |
 |------|--------|--------|
-| 1. `document_id` / `chunk_id` in SQLite + Qdrant payload | Medium | Unblocks delete/replace |
+| 1. `document_id` / `chunk_id` in PostgreSQL + Qdrant payload | Medium | Unblocks delete/replace |
 | 2. `DELETE /v1/documents/{id}` dual-store | Medium | Fixes biggest lifecycle gap |
 | 3. Extract `IngestService` / `QueryService` | Low–medium | Clean separation in code |
 | 4. Persistent BM25 (build on ingest) | Medium | Fixes query scalability |
@@ -285,7 +285,7 @@ flowchart TB
 1. **Single-tenant vs multi-tenant** — affects collection strategy and auth.
 2. **Replace semantics** — full document replace only, or partial page updates?
 3. **Async ingest now or later** — depends on PDF size and expected concurrency.
-4. **Sparse index** — stay on SQLite+BM25 with cache, or move to OpenSearch/Elasticsearch later.
+4. **Sparse index** — stay on PostgreSQL+BM25 with cache, or move to OpenSearch/Elasticsearch later.
 5. **Backward compatibility** — keep `/ingest` and `/ask` as aliases during migration?
 
 ---
