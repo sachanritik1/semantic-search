@@ -3,8 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
-from langsmith import traceable
-from langsmith.run_helpers import get_current_run_tree
+from langfuse import get_client, observe
 from sentence_transformers import CrossEncoder
 
 from app.config import settings
@@ -19,10 +18,6 @@ class RerankResult:
 
 
 _model: CrossEncoder | None = None
-
-
-def _tracing_enabled() -> bool:
-    return bool(settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY)
 
 
 def _retrieval_methods(meta: dict[str, Any]) -> list[str]:
@@ -123,11 +118,7 @@ def _build_rerank_trace(
 
 
 def _record_rerank_trace(payload: dict[str, Any]) -> None:
-    if not _tracing_enabled():
-        return
-    run = get_current_run_tree()
-    if run is not None:
-        run.add_outputs(payload)
+    get_client().update_current_span(output=payload)
 
 
 def _get_cross_encoder() -> CrossEncoder:
@@ -207,16 +198,15 @@ def _score_candidates(
     return [(doc_id, score) for doc_id, score in entries], raw_by_id
 
 
-@traceable(
-    run_type="chain",
-    name="cross_encoder_rerank",
-    process_inputs=_trace_inputs,
-)
+@observe(name="cross_encoder_rerank", capture_input=False)
 def re_rank_docs(
     query: str,
     docs: list[Document],
     top_n: int = 5,
 ) -> RerankResult:
+    get_client().update_current_span(
+        input=_trace_inputs({"query": query, "docs": docs, "top_n": top_n})
+    )
     if not docs:
         logger.warning("Rerank skipped: no candidates")
         _record_rerank_trace(

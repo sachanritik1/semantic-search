@@ -3,15 +3,30 @@ import json
 
 from app.services.compare_service import CompareService
 from app.services.llm_service import LLMService
+from app.utils.prompt_cache import cache_key
 
 MAX_DOC_CHARS = 500
 
+_COMPARE_SYSTEM_PROMPT = """You are a retrieval evaluation assistant. Score how relevant each document is to answering the question.
 
-def _build_compare_prompt(
-    question: str,
-    dense: list[dict],
-    sparse: list[dict],
-) -> str:
+For every document id listed above, rate relevance from 0 (irrelevant) to 10 (highly relevant) and give a one-sentence reason.
+Then compare the two retrievers (dense vector vs sparse BM25): which found better matches overall and why.
+
+Return only valid JSON in this shape:
+{
+  "document_scores": [
+    {"id": "dense-0", "source": "dense", "relevance": 8, "reason": "..."}
+  ],
+  "retriever_verdict": {
+    "winner": "dense" | "sparse" | "tie",
+    "dense_strength": "...",
+    "sparse_strength": "..."
+  },
+  "summary": "..."
+}"""
+
+
+def _format_compare_documents(dense: list[dict], sparse: list[dict]) -> str:
     blocks: list[str] = []
 
     for item in dense:
@@ -41,30 +56,30 @@ def _build_compare_prompt(
 </document>"""
         )
 
-    return f"""You are a retrieval evaluation assistant. Score how relevant each document is to answering the question.
+    return "\n".join(blocks)
 
-Question:
+
+def _build_compare_messages(
+    question: str,
+    dense: list[dict],
+    sparse: list[dict],
+) -> tuple[str, str]:
+    documents = _format_compare_documents(dense, sparse)
+    user_message = f"""Question:
 {question}
 
 Documents:
-{chr(10).join(blocks)}
+{documents}"""
+    return _COMPARE_SYSTEM_PROMPT, user_message
 
-For every document id listed above, rate relevance from 0 (irrelevant) to 10 (highly relevant) and give a one-sentence reason.
-Then compare the two retrievers (dense vector vs sparse BM25): which found better matches overall and why.
 
-Return only valid JSON in this shape:
-{{
-  "document_scores": [
-    {{"id": "dense-0", "source": "dense", "relevance": 8, "reason": "..."}}
-  ],
-  "retriever_verdict": {{
-    "winner": "dense" | "sparse" | "tie",
-    "dense_strength": "...",
-    "sparse_strength": "..."
-  }},
-  "summary": "..."
-}}
-"""
+def _build_compare_prompt(
+    question: str,
+    dense: list[dict],
+    sparse: list[dict],
+) -> str:
+    system_prompt, user_message = _build_compare_messages(question, dense, sparse)
+    return f"{system_prompt}\n\n{user_message}"
 
 
 def _parse_llm_comparison(raw: str) -> dict:
@@ -107,11 +122,13 @@ class CompareLLMService:
                 },
             }
 
-        prompt = _build_compare_prompt(question, dense, sparse)
+        system_prompt, user_message = _build_compare_messages(question, dense, sparse)
         call = self.llm_service.generate_text_async(
-            prompt,
+            user_message,
             temperature=0.0,
             max_tokens=max_tokens,
+            system_prompt=system_prompt,
+            cache_key=cache_key("compare"),
         )
         response = await asyncio.wait_for(call, timeout=timeout_s)
         llm_comparison = _parse_llm_comparison(str(response.content))

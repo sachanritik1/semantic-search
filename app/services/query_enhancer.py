@@ -3,7 +3,19 @@
 import json
 import re
 
+from langfuse import get_client, observe
+
 from app.services.llm_service import LLMService
+from app.utils.prompt_cache import cache_key
+
+_ENHANCER_SYSTEM_PROMPT = """Generate exactly 3 diverse search queries to improve document retrieval.
+Rules:
+- Keep the same intent and entities as the original.
+- Do not invent facts or assumptions.
+- Each query should use different wording, synonyms, or neutral clarifiers.
+- Queries must be useful for keyword and semantic search.
+
+Return ONLY a JSON array of 3 strings, e.g. ["query one", "query two", "query three"]."""
 
 _QUERY_COUNT = 3
 
@@ -59,24 +71,21 @@ class QueryEnhancer:
         self.llm_service = llm_service
         self.enhancer_model = enhancer_model
 
+    @observe(name="query_enhancer.enhance", capture_input=False)
     def enhance(self, query: str) -> list[str]:
-        prompt = (
-            "Generate exactly 3 diverse search queries to improve document retrieval.\n"
-            "Rules:\n"
-            "- Keep the same intent and entities as the original.\n"
-            "- Do not invent facts or assumptions.\n"
-            "- Each query should use different wording, synonyms, or neutral clarifiers.\n"
-            "- Queries must be useful for keyword and semantic search.\n\n"
-            f"Original query: \"{query}\"\n\n"
-            'Return ONLY a JSON array of 3 strings, e.g. ["query one", "query two", "query three"].'
-        )
+        get_client().update_current_span(input=query)
+        user_message = f'Original query: "{query}"'
 
         response = self.llm_service.generate_text(
-            prompt,
+            user_message,
             temperature=0.0,
             max_tokens=256,
             model=self.enhancer_model,
+            system_prompt=_ENHANCER_SYSTEM_PROMPT,
+            cache_key=cache_key("enhance"),
         )
 
         text = response.content or ""
-        return _parse_queries(text, query)
+        queries = _parse_queries(text, query)
+        get_client().update_current_span(output=queries)
+        return queries

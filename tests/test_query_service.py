@@ -50,17 +50,22 @@ async def test_ask_uses_only_reranked_docs_on_success():
             return_value=RerankResult(docs=selected, failed=False),
         ),
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
-        ) as build_prompt,
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
+        ) as build_ask_messages,
     ):
         result = await service.ask("question?", document_id="doc-1")
 
     assert result["response"] == "answer"
     assert result["enhanced_questions"] == ["q1", "q2", "q3"]
     assert result["enhanced_question"] == "q1 | q2 | q3"
-    build_prompt.assert_called_once()
-    assert build_prompt.call_args.kwargs["docs"] == selected
+    build_ask_messages.assert_called_once()
+    assert build_ask_messages.call_args.kwargs["docs"] == selected
+    llm.generate_text.assert_called_once_with(
+        "user",
+        system_prompt="system",
+        cache_key="ask:v1",
+    )
 
 
 @pytest.mark.asyncio
@@ -99,13 +104,13 @@ async def test_ask_uses_all_fused_on_rerank_failure():
             return_value=RerankResult(docs=[], failed=True),
         ),
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
-        ) as build_prompt,
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
+        ) as build_ask_messages,
     ):
         await service.ask("question?", document_id="doc-1")
 
-    assert build_prompt.call_args.kwargs["docs"] == fused
+    assert build_ask_messages.call_args.kwargs["docs"] == fused
 
 
 @pytest.mark.asyncio
@@ -145,8 +150,8 @@ async def test_ask_passes_each_query_to_retrievers():
             return_value=[],
         ),
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
         ),
     ):
         await service.ask("question?", document_id=document_id)
@@ -182,15 +187,15 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
         patch.object(service, "_retrieve_dense") as retrieve_dense,
         patch.object(service, "_build_sparse_retriever") as build_sparse,
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
-        ) as build_prompt,
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
+        ) as build_ask_messages,
     ):
         result = await service.ask("question?", document_id="missing-doc")
 
     retrieve_dense.assert_not_called()
     build_sparse.assert_not_called()
-    build_prompt.assert_called_once_with(docs=[], question="question?")
+    build_ask_messages.assert_called_once_with(docs=[], question="question?")
     assert result["response"] == "no context answer"
     assert result["enhanced_questions"] == ["q1", "q2", "q3"]
 
@@ -219,8 +224,8 @@ async def test_ask_returns_cache_hit_on_repeat_question(isolated_ask_cache_db):
             return_value=[],
         ),
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
         ),
     ):
         first = await service.ask("question?", document_id="doc-1")
@@ -246,7 +251,7 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream(
 
     llm = MagicMock()
 
-    async def fake_stream_text(prompt: str):
+    async def fake_stream_text(prompt: str, **kwargs):
         for piece in ["Hel", "lo ", "world"]:
             await asyncio.sleep(0)
             yield piece
@@ -272,8 +277,8 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream(
             return_value=[],
         ),
         patch(
-            "app.services.query_service.build_prompt",
-            return_value="prompt",
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
         ),
     ):
         gen = service.stream_ask("question?", document_id="doc-1")
@@ -314,10 +319,28 @@ async def test_stream_generate_async_yields_chunks_incrementally():
         def __init__(self) -> None:
             self.produced_at: list[float] = []
 
-        def generate(self, prompt, *, temperature=0.7, max_tokens=None, model=None):  # pragma: no cover
+        def generate(  # pragma: no cover
+            self,
+            prompt,
+            *,
+            temperature=0.7,
+            max_tokens=None,
+            model=None,
+            system_prompt=None,
+            cache_key=None,
+        ):
             return LLMResponse(content="")
 
-        def stream_generate(self, prompt, *, temperature=0.7, max_tokens=None, model=None):
+        def stream_generate(
+            self,
+            prompt,
+            *,
+            temperature=0.7,
+            max_tokens=None,
+            model=None,
+            system_prompt=None,
+            cache_key=None,
+        ):
             for piece in ["a", "b", "c"]:
                 time.sleep(0.05)
                 self.produced_at.append(time.monotonic())

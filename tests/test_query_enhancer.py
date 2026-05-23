@@ -9,8 +9,19 @@ class DummyLLMService:
         self.content = content
         self.called = False
 
-    def generate_text(self, prompt: str, *, temperature=0.0, max_tokens=None, model=None):
+    def generate_text(
+        self,
+        prompt: str,
+        *,
+        temperature=0.0,
+        max_tokens=None,
+        model=None,
+        system_prompt=None,
+        cache_key=None,
+    ):
         self.called = True
+        self.system_prompt = system_prompt
+        self.cache_key = cache_key
         return LLMResponse(content=self.content)
 
 
@@ -54,7 +65,16 @@ def test_parse_queries_strips_markdown_fence():
 
 def test_enhancer_falls_back_to_original_when_llm_returns_empty():
     class EmptyLLMService:
-        def generate_text(self, prompt: str, *, temperature=0.0, max_tokens=None, model=None):
+        def generate_text(
+            self,
+            prompt: str,
+            *,
+            temperature=0.0,
+            max_tokens=None,
+            model=None,
+            system_prompt=None,
+            cache_key=None,
+        ):
             return LLMResponse(content="")
 
     enhancer = QueryEnhancer(EmptyLLMService())

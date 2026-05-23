@@ -19,12 +19,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "openai/gpt-oss-120b:free"
 
-    # Langchain
-    LANGSMITH_TRACING: bool = True
-    LANGSMITH_API_KEY: str = ""
-    LANGCHAIN_TRACING_V2: bool = False
-    LANGCHAIN_API_KEY: str = ""
-    LANGCHAIN_PROJECT: str = "semantic-search"
+    # Langfuse (tracing toggled via LANGFUSE_TRACING_ENABLED env var — Langfuse SDK)
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
 
     # Query enhancement (optional override; defaults to provider model)
     ENHANCER_MODEL: str | None = None
@@ -58,6 +56,10 @@ class Settings(BaseSettings):
     # SSE streaming (/ask/stream)
     SSE_HEARTBEAT_INTERVAL_S: float = 15.0
 
+    # Provider-native prompt prefix caching (OpenAI / Gemini / OpenRouter)
+    PROMPT_CACHE_ENABLED: bool = True
+    PROMPT_CACHE_VERSION: str = "v1"
+
     # Semantic /ask response cache (in-process, TTL-only eviction)
     SEMANTIC_CACHE_ENABLED: bool = True
     SEMANTIC_CACHE_THRESHOLD: float = 0.85
@@ -66,6 +68,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

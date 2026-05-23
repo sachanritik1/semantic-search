@@ -1,8 +1,9 @@
 # app/main.py
 
 import logging
-import os
 from contextlib import asynccontextmanager
+
+from langfuse import Langfuse, get_client
 
 from app.config import settings
 
@@ -33,13 +34,17 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.LANGSMITH_TRACING and settings.LANGSMITH_API_KEY:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_API_KEY"] = settings.LANGSMITH_API_KEY
-        os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
-        os.environ.setdefault("LANGCHAIN_PROJECT", settings.LANGCHAIN_PROJECT)
+    if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+        Langfuse(
+            public_key=settings.LANGFUSE_PUBLIC_KEY,
+            secret_key=settings.LANGFUSE_SECRET_KEY,
+            host=settings.LANGFUSE_HOST,
+        )
     init_db()
-    yield
+    try:
+        yield
+    finally:
+        get_client().flush()
 
 
 app = FastAPI(title="RAG API", lifespan=lifespan)

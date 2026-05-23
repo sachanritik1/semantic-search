@@ -1,11 +1,8 @@
 from typing import Sequence, TypedDict, cast
 
-from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 
-v1 = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""You are a question-answering assistant for a document search system.
+ASK_SYSTEM_PREFIX = """You are a question-answering assistant for a document search system.
 
 Answer the user's question using ONLY the <context> below.
 Each <document> has <metadata> (source, page) and <content>.
@@ -18,16 +15,7 @@ Rules:
 - Citation format: 【N†source=<document_name>&page=<page>】 where N matches the L-label number (L1 → 1, L2 → 2, …).
 - Always include the document name (source) and page number from the document metadata in every citation.
 - If a document has no page, use 【N†source=<document_name>】 only.
-- Reuse the same citation marker when citing the same passage again.
-
-<context>
-{context}
-</context>
-
-Question:
-{question}
-"""
-)
+- Reuse the same citation marker when citing the same passage again."""
 
 
 class DocumentMetadata(TypedDict, total=False):
@@ -97,20 +85,44 @@ author: {metadata.get("author", "n/a")}
 </document>"""
 
 
-def build_prompt(
-    docs: Sequence[Document],
-    question: str,
-    *,
-    search_query: str | None = None,
-) -> str:
-    blocks = [_format_document_block(i, doc) for i, doc in enumerate(docs, start=1)]
-    context = "\n\n".join(blocks) if blocks else "(no documents retrieved)"
-
+def _format_question_block(question: str, *, search_query: str | None = None) -> str:
     question_block = question.strip()
     if search_query and search_query.strip() != question_block:
         question_block = (
             f"{question_block}\n"
             f"(Retrieval used a rewritten query: {search_query.strip()})"
         )
+    return question_block
 
-    return v1.format(context=context, question=question_block)
+
+def build_ask_messages(
+    docs: Sequence[Document],
+    question: str,
+    *,
+    search_query: str | None = None,
+) -> tuple[str, str]:
+    """Return (system_prefix, user_message) for provider-native prompt caching."""
+    blocks = [_format_document_block(i, doc) for i, doc in enumerate(docs, start=1)]
+    context = "\n\n".join(blocks) if blocks else "(no documents retrieved)"
+    question_block = _format_question_block(question, search_query=search_query)
+    user_message = f"""<context>
+{context}
+</context>
+
+Question:
+{question_block}"""
+    return ASK_SYSTEM_PREFIX, user_message
+
+
+def build_prompt(
+    docs: Sequence[Document],
+    question: str,
+    *,
+    search_query: str | None = None,
+) -> str:
+    system_prefix, user_message = build_ask_messages(
+        docs,
+        question,
+        search_query=search_query,
+    )
+    return f"{system_prefix}\n\n{user_message}"

@@ -30,6 +30,8 @@ class BaseLLM(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        cache_key: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate a response from the LLM.
@@ -52,6 +54,8 @@ class BaseLLM(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        cache_key: Optional[str] = None,
     ) -> Iterator[str]:
         """
         Stream text deltas from the LLM.
@@ -65,6 +69,8 @@ class BaseLLM(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        cache_key: Optional[str] = None,
     ) -> LLMResponse:
         """
         Default async wrapper for sync LLMs.
@@ -79,6 +85,8 @@ class BaseLLM(ABC):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 model=model,
+                system_prompt=system_prompt,
+                cache_key=cache_key,
             ),
         )
 
@@ -89,6 +97,8 @@ class BaseLLM(ABC):
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        cache_key: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """
         Default async wrapper that yields sync stream chunks from a thread.
@@ -111,6 +121,8 @@ class BaseLLM(ABC):
                     temperature=temperature,
                     max_tokens=max_tokens,
                     model=model,
+                    system_prompt=system_prompt,
+                    cache_key=cache_key,
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, chunk)
             except BaseException as exc:

@@ -1,9 +1,24 @@
 import pytest
 
 from app.services.compare_llm_service import (
+    _COMPARE_SYSTEM_PROMPT,
+    _build_compare_messages,
     _build_compare_prompt,
     _parse_llm_comparison,
 )
+
+
+def test_build_compare_messages_splits_static_and_dynamic():
+    system_prompt, user_message = _build_compare_messages(
+        "What is RAG?",
+        dense=[{"index": 0, "content": "dense doc"}],
+        sparse=[{"index": 0, "content": "sparse doc", "score": 1.5}],
+    )
+    assert system_prompt == _COMPARE_SYSTEM_PROMPT
+    assert "dense-0" in user_message
+    assert "sparse-0" in user_message
+    assert "What is RAG?" in user_message
+    assert _COMPARE_SYSTEM_PROMPT not in user_message
 
 
 def test_build_compare_prompt_includes_both_sources():

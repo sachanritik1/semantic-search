@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
+from langfuse import get_client, observe
 
 from app.config import settings
 from app.db.document_store import chunk_to_document, list_chunks_for_document
@@ -19,7 +20,8 @@ from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs
 from app.services.semantic_cache import SemanticAskCache
 from app.services.sparse_retriever import SparseRetriever
-from app.utils.prompts import build_prompt
+from app.utils.prompt_cache import cache_key
+from app.utils.prompts import build_ask_messages
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ _pending_completions: set[asyncio.Task] = set()
 @dataclass
 class PrepareResult:
     result_base: dict
-    prompt_text: str | None
+    system_prompt: str | None
+    user_message: str | None
     cached_response: str | None
     cache_hit: bool
 
@@ -57,7 +60,8 @@ class QueryService:
                         "original_question": cached["original_question"],
                         "enhanced_question": cached["enhanced_question"],
                     },
-                    prompt_text=None,
+                    system_prompt=None,
+                    user_message=None,
                     cached_response=cached["response"],
                     cache_hit=True,
                 )
@@ -78,9 +82,11 @@ class QueryService:
                 "No chunks found for document_id=%s; answering without retrieval context",
                 document_id,
             )
+            system_prompt, user_message = build_ask_messages(docs=[], question=question)
             return PrepareResult(
                 result_base=result_base,
-                prompt_text=build_prompt(docs=[], question=question),
+                system_prompt=system_prompt,
+                user_message=user_message,
                 cached_response=None,
                 cache_hit=False,
             )
@@ -116,9 +122,11 @@ class QueryService:
         )
 
         if not fused:
+            system_prompt, user_message = build_ask_messages(docs=[], question=question)
             return PrepareResult(
                 result_base=result_base,
-                prompt_text=build_prompt(docs=[], question=question),
+                system_prompt=system_prompt,
+                user_message=user_message,
                 cached_response=None,
                 cache_hit=False,
             )
@@ -139,39 +147,59 @@ class QueryService:
             answer_docs = rerank_result.docs
 
         search_query = enhanced_joined if len(queries) > 1 else queries[0]
-        prompt_text = build_prompt(
+        system_prompt, user_message = build_ask_messages(
             docs=answer_docs,
             question=question,
             search_query=search_query,
         )
         return PrepareResult(
             result_base=result_base,
-            prompt_text=prompt_text,
+            system_prompt=system_prompt,
+            user_message=user_message,
             cached_response=None,
             cache_hit=False,
         )
 
+    @observe(name="ask", capture_input=False)
     async def ask(self, question: str, *, document_id: str) -> dict:
+        get_client().update_current_span(
+            input={"question": question, "document_id": document_id},
+        )
         prepared = self._prepare_ask(question, document_id=document_id)
         if prepared.cache_hit:
-            return {**prepared.result_base, "response": prepared.cached_response, "cache_hit": True}
-
-        response = self.llm_service.generate_text(prepared.prompt_text)
-        return self._complete_ask(
-            question,
-            document_id,
-            {
+            result = {
                 **prepared.result_base,
-                "response": response.content,
-            },
-        )
+                "response": prepared.cached_response,
+                "cache_hit": True,
+            }
+            get_client().update_current_span(output=prepared.cached_response)
+            return result
 
+        response = self.llm_service.generate_text(
+            prepared.user_message,
+            system_prompt=prepared.system_prompt,
+            cache_key=cache_key("ask"),
+        )
+        result = {
+            **prepared.result_base,
+            "response": response.content,
+        }
+        if response.usage:
+            result["usage"] = response.usage
+        result = self._complete_ask(question, document_id, result)
+        get_client().update_current_span(output=result["response"])
+        return result
+
+    @observe(name="ask.stream", capture_input=False)
     async def stream_ask(
         self,
         question: str,
         *,
         document_id: str,
     ) -> AsyncIterator[dict]:
+        get_client().update_current_span(
+            input={"question": question, "document_id": document_id},
+        )
         prepared = self._prepare_ask(question, document_id=document_id)
         meta = {**prepared.result_base}
         if prepared.cache_hit:
@@ -179,6 +207,7 @@ class QueryService:
         yield {"event": "meta", "data": meta}
 
         if prepared.cache_hit:
+            get_client().update_current_span(output=prepared.cached_response)
             yield {"event": "token", "data": {"text": prepared.cached_response}}
             yield {"event": "done", "data": {"cache_hit": True}}
             return
@@ -192,7 +221,11 @@ class QueryService:
 
         async def _drive_and_cache() -> None:
             try:
-                async for chunk in self.llm_service.stream_text(prepared.prompt_text):
+                async for chunk in self.llm_service.stream_text(
+                    prepared.user_message,
+                    system_prompt=prepared.system_prompt,
+                    cache_key=cache_key("ask"),
+                ):
                     full_text.append(chunk)
                     queue.put_nowait(chunk)
             except BaseException as exc:
@@ -229,6 +262,7 @@ class QueryService:
                 raise item
             yield {"event": "token", "data": {"text": item}}
 
+        get_client().update_current_span(output="".join(full_text))
         yield {"event": "done", "data": {"cache_hit": False}}
 
     def _complete_ask(

@@ -13,7 +13,7 @@ Built as a learning and experimentation platform for hybrid retrieval, query rew
 - **Retriever comparison** — side-by-side dense vs sparse results, with optional LLM relevance scoring
 - **Multi-provider LLMs** — OpenAI, Google Gemini, or OpenRouter (switch via config)
 - **Prompt templates** — reusable `.txt` templates for QA, summarization, and extraction
-- **Utilities** — token counting, self-consistency sampling, LangSmith tracing
+- **Utilities** — token counting, self-consistency sampling, Langfuse tracing
 
 ## Architecture
 
@@ -96,8 +96,10 @@ QDRANT_COLLECTION_NAME=semantic-search
 # Optional
 DATABASE_URL=sqlite:///./docstore.db
 EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
-LANGSMITH_TRACING=false
-LANGSMITH_API_KEY=
+LANGFUSE_TRACING_ENABLED=true
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
 
 ### 4. Run the API
@@ -243,7 +245,52 @@ pytest
 | `RERANK_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | CrossEncoder rerank model |
 | `ENHANCER_MODEL` | _(provider default)_ | Override model for query enhancement |
 | `ENABLE_REASONING` | `false` | Enable reasoning mode where supported |
-| `LANGSMITH_TRACING` | `true` | Enable LangSmith when API key is set |
+| `PROMPT_CACHE_ENABLED` | `true` | Provider-native prompt prefix caching (OpenAI / Gemini / OpenRouter) |
+| `PROMPT_CACHE_VERSION` | `v1` | Bump to invalidate provider prompt caches after changing system prompts |
+| `LLM_PRICING_JSON_PATH` | _(unset)_ | Optional path to a JSON file overriding/extending built-in model pricing |
+
+### Cost tracking
+
+Every LLM call routed through `LLMService` computes an estimated USD cost from
+the provider-reported token usage and attaches it to `response.usage["cost"]`.
+The `/ask` response surfaces this in its `usage` field, e.g.:
+
+```json
+{
+  "usage": {
+    "input_tokens": 1200,
+    "cached_tokens": 1000,
+    "output_tokens": 320,
+    "cost": {
+      "currency": "USD",
+      "input_cost": 0.0005,
+      "cached_input_cost": 0.00125,
+      "output_cost": 0.0032,
+      "total_cost": 0.00495,
+      "savings_from_cache": 0.00125
+    }
+  }
+}
+```
+
+Built-in pricing for common OpenAI, Gemini, Anthropic, and OpenRouter models
+lives in `app/utils/llm_pricing.py`. To add or override a model without
+touching code, point `LLM_PRICING_JSON_PATH` at a JSON file:
+
+```json
+{
+  "my-custom-model": {
+    "input": 1.0,
+    "output": 3.0,
+    "cached_input": 0.25
+  }
+}
+```
+
+Values are USD per 1M tokens. Unknown models silently skip cost estimation
+(usage tokens still reported).
+| `LANGFUSE_TRACING_ENABLED` | `true` | Langfuse SDK tracing toggle (set `false` to disable) |
+| `LANGFUSE_HOST` | `https://us.cloud.langfuse.com` | Langfuse Cloud US endpoint |
 | `DEFAULT_TENANT_ID` | `default` | Tenant namespace for multi-tenant prep |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins allowed to call the API |
 
