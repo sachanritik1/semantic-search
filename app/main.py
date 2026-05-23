@@ -1,11 +1,14 @@
 # app/main.py
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from langfuse import Langfuse, get_client
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 _log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 logging.basicConfig(
@@ -32,6 +35,18 @@ from app.routers import (
 )
 
 
+async def _warm_reranker() -> None:
+    # Loading the cross-encoder downloads ~80MB from HuggingFace on the first
+    # call. Doing it here keeps the latency off the request path so the first
+    # /ask doesn't appear to "hang".
+    try:
+        from app.services.re_ranker import _get_cross_encoder
+
+        await asyncio.to_thread(_get_cross_encoder)
+    except Exception:
+        logger.exception("Failed to pre-warm cross-encoder; first /ask will be slow")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
@@ -41,6 +56,7 @@ async def lifespan(app: FastAPI):
             host=settings.LANGFUSE_HOST,
         )
     init_db()
+    await _warm_reranker()
     try:
         yield
     finally:

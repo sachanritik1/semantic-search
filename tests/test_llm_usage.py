@@ -24,6 +24,28 @@ def test_annotate_cost_handles_none_usage():
     assert annotate_cost(None, model="gpt-4o") is None
 
 
+def test_log_llm_usage_handles_provider_numeric_cost(caplog):
+    usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "cost": 0.00123,
+    }
+
+    with caplog.at_level(logging.INFO, logger="app.utils.llm_usage"):
+        log_llm_usage(usage, context="generate", model="unknown/model")
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("provider-reported" in m and "0.001230" in m for m in messages)
+
+
+def test_annotate_cost_preserves_provider_numeric_cost():
+    usage = {"input_tokens": 100, "output_tokens": 50, "cost": 0.00123}
+    annotate_cost(usage, model="gpt-4o")
+    assert usage["cost"] == 0.00123
+    assert "estimated_cost" in usage
+    assert usage["estimated_cost"]["currency"] == "USD"
+
+
 def test_log_llm_usage_emits_cost(caplog):
     usage = {
         "input_tokens": 1000,

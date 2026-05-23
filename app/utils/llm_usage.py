@@ -19,14 +19,21 @@ def _extract_cached_tokens(usage: dict[str, Any]) -> int | None:
 def annotate_cost(usage: dict[str, Any] | None, *, model: str | None) -> dict[str, Any] | None:
     """Compute estimated cost and attach it to ``usage`` in-place.
 
+    OpenRouter (and some providers) include a numeric ``cost`` field on usage.
+    We store our breakdown under ``estimated_cost`` and only set ``cost`` when
+    it is not already a provider-reported number.
+
     Returns the (mutated) usage dict for chaining; returns ``None`` when usage
     itself is ``None``.
     """
     if usage is None:
         return None
-    cost = estimate_cost(model, usage)
-    if cost is not None:
-        usage["cost"] = cost
+    estimated = estimate_cost(model, usage)
+    if estimated is not None:
+        usage["estimated_cost"] = estimated
+        existing = usage.get("cost")
+        if not isinstance(existing, (int, float)):
+            usage["cost"] = estimated
     return usage
 
 
@@ -59,8 +66,22 @@ def log_llm_usage(
                 cached,
             )
 
+    estimated = usage.get("estimated_cost")
+    if isinstance(estimated, dict):
+        logger.info(
+            "LLM cost %s model=%s: total=$%.6f input=$%.6f cached=$%.6f output=$%.6f savings=$%.6f",
+            context,
+            model,
+            estimated.get("total_cost", 0.0),
+            estimated.get("input_cost", 0.0),
+            estimated.get("cached_input_cost", 0.0),
+            estimated.get("output_cost", 0.0),
+            estimated.get("savings_from_cache", 0.0),
+        )
+        return
+
     cost = usage.get("cost")
-    if cost is not None:
+    if isinstance(cost, dict):
         logger.info(
             "LLM cost %s model=%s: total=$%.6f input=$%.6f cached=$%.6f output=$%.6f savings=$%.6f",
             context,
@@ -70,6 +91,13 @@ def log_llm_usage(
             cost.get("cached_input_cost", 0.0),
             cost.get("output_cost", 0.0),
             cost.get("savings_from_cache", 0.0),
+        )
+    elif isinstance(cost, (int, float)):
+        logger.info(
+            "LLM cost %s model=%s: total=$%.6f (provider-reported)",
+            context,
+            model,
+            float(cost),
         )
 
 

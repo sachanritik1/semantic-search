@@ -161,44 +161,46 @@ export function AskSection({ documentId }: AskSectionProps) {
 						</p>
 					) : null}
 
-					{hasAnswer ? (
-						<div className="flex flex-col gap-4">
-							<AnswerContent content={streamingText} embedded />
-							{meta ? (
-								<details className="rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)">
-									<summary className="cursor-pointer font-medium text-(--sea-ink)">
-										Query enhancement
-									</summary>
-									<div className="mt-2 space-y-2">
-										<p className="m-0">
-											<span className="font-medium">Original:</span>{" "}
-											{meta.original_question}
-										</p>
-										{meta.enhanced_questions &&
-										meta.enhanced_questions.length > 0 ? (
-											<div className="m-0">
-												<p className="m-0 font-medium">Enhanced queries:</p>
-												<ul className="mt-1 list-inside list-disc space-y-1">
-													{meta.enhanced_questions.map((q) => (
-														<li key={q}>{q}</li>
-													))}
-												</ul>
-											</div>
-										) : (
-											<p className="m-0">
-												<span className="font-medium">Enhanced:</span>{" "}
-												{meta.enhanced_question}
-											</p>
-										)}
-										{meta.cache_hit ? (
-											<p className="m-0 text-xs text-(--sea-ink-soft)">
-												Served from semantic cache
-											</p>
-										) : null}
+					{meta ? (
+						<details
+							open
+							className="mb-4 rounded-lg border border-(--line) bg-(--chip-bg)/50 px-3 py-2 text-sm text-(--sea-ink-soft)"
+						>
+							<summary className="cursor-pointer font-medium text-(--sea-ink)">
+								Query enhancement
+							</summary>
+							<div className="mt-2 space-y-2">
+								<p className="m-0">
+									<span className="font-medium">Original:</span>{" "}
+									{meta.original_question}
+								</p>
+								{meta.enhanced_questions &&
+								meta.enhanced_questions.length > 0 ? (
+									<div className="m-0">
+										<p className="m-0 font-medium">Enhanced queries:</p>
+										<ul className="mt-1 list-inside list-disc space-y-1">
+											{meta.enhanced_questions.map((q) => (
+												<li key={q}>{q}</li>
+											))}
+										</ul>
 									</div>
-								</details>
-							) : null}
-						</div>
+								) : (
+									<p className="m-0">
+										<span className="font-medium">Enhanced:</span>{" "}
+										{meta.enhanced_question}
+									</p>
+								)}
+								{meta.cache_hit ? (
+									<p className="m-0 text-xs text-(--sea-ink-soft)">
+										Served from semantic cache
+									</p>
+								) : null}
+							</div>
+						</details>
+					) : null}
+
+					{hasAnswer ? (
+						<AnswerContent content={streamingText} embedded />
 					) : null}
 
 					{status === "idle" ? (

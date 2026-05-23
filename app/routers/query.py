@@ -41,7 +41,11 @@ async def _ask_stream_generator(
             yield frame
     except Exception as exc:
         logger.exception("ask/stream failed")
-        yield format_sse_event("error", {"message": str(exc)})
+        message = str(exc) or exc.__class__.__name__
+        yield format_sse_event(
+            "error",
+            {"message": message, "type": exc.__class__.__name__},
+        )
 
 
 @router.post("/ask/stream")

@@ -165,7 +165,11 @@ class QueryService:
         get_client().update_current_span(
             input={"question": question, "document_id": document_id},
         )
-        prepared = self._prepare_ask(question, document_id=document_id)
+        prepared = await asyncio.to_thread(
+            self._prepare_ask,
+            question,
+            document_id=document_id,
+        )
         if prepared.cache_hit:
             result = {
                 **prepared.result_base,
@@ -200,7 +204,20 @@ class QueryService:
         get_client().update_current_span(
             input={"question": question, "document_id": document_id},
         )
-        prepared = self._prepare_ask(question, document_id=document_id)
+        # Emit an immediate frame so the SSE response starts flowing to the
+        # client before we begin the (potentially slow) retrieval pipeline.
+        # Without this, the browser sees only the response headers until
+        # _prepare_ask finishes (query enhancement, retrieval, rerank).
+        yield {"event": "status", "data": {"stage": "preparing"}}
+
+        # Retrieval, enhancement, and reranking are all synchronous and can
+        # take several seconds. Run them in a worker thread so the event loop
+        # stays responsive (heartbeats fire, client can disconnect cleanly).
+        prepared = await asyncio.to_thread(
+            self._prepare_ask,
+            question,
+            document_id=document_id,
+        )
         meta = {**prepared.result_base}
         if prepared.cache_hit:
             meta["cache_hit"] = True

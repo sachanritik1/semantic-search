@@ -19,14 +19,21 @@ async def with_heartbeats(
     *,
     interval_s: float,
 ) -> AsyncIterator[str]:
-    """Merge SSE frames with comment heartbeats on a fixed interval."""
-    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    """Merge SSE frames with comment heartbeats on a fixed interval.
+
+    If the upstream `frames` generator raises, the exception is re-raised on
+    the consumer side so callers can translate it into an SSE `error` event
+    instead of silently terminating the stream.
+    """
+    queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
     done = asyncio.Event()
 
     async def pump_frames() -> None:
         try:
             async for frame in frames:
                 await queue.put(frame)
+        except BaseException as exc:
+            await queue.put(exc)
         finally:
             done.set()
             await queue.put(None)
@@ -44,10 +51,12 @@ async def with_heartbeats(
     hb_task = asyncio.create_task(pump_heartbeats())
     try:
         while True:
-            frame = await queue.get()
-            if frame is None:
+            item = await queue.get()
+            if item is None:
                 return
-            yield frame
+            if isinstance(item, BaseException):
+                raise item
+            yield item
     finally:
         done.set()
         hb_task.cancel()

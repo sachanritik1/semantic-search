@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
 
     # Query enhancement (optional override; defaults to provider model)
-    ENHANCER_MODEL: str | None = None
+    ENHANCER_MODEL: str | None = "nvidia/nemotron-nano-9b-v2:free"
 
     # Reasoning
     ENABLE_REASONING: bool = False
