@@ -6,7 +6,7 @@ import { FieldGroup } from "#/components/ui/field.tsx";
 import { useAppForm } from "#/hooks/use-app-form.ts";
 import { askStream } from "#/lib/api/endpoints.ts";
 import { ApiError } from "#/lib/api/client.ts";
-import type { AskStreamMeta } from "#/lib/api/types.ts";
+import type { AskStreamMeta, AskStreamStage } from "#/lib/api/types.ts";
 import { questionSchema } from "#/lib/forms/schemas.ts";
 
 type AskStatus = "idle" | "preparing" | "streaming" | "done" | "error";
@@ -15,12 +15,30 @@ interface AskSectionProps {
 	documentId: string | null;
 }
 
+const STAGE_ORDER: AskStreamStage[] = [
+	"enhancing_query",
+	"retrieving",
+	"reranking",
+	"generating",
+];
+
+const STAGE_LABELS: Record<AskStreamStage, string> = {
+	enhancing_query: "Enhancing query",
+	retrieving: "Retrieving documents",
+	reranking: "Reranking results",
+	generating: "Generating answer",
+};
+
 export function AskSection({ documentId }: AskSectionProps) {
 	const [status, setStatus] = useState<AskStatus>("idle");
 	const [streamingText, setStreamingText] = useState("");
 	const [meta, setMeta] = useState<AskStreamMeta | null>(null);
 	const [error, setError] = useState<Error | null>(null);
 	const [retryAttempt, setRetryAttempt] = useState(0);
+	const [stage, setStage] = useState<AskStreamStage | null>(null);
+	const [completedStages, setCompletedStages] = useState<Set<AskStreamStage>>(
+		() => new Set(),
+	);
 	const abortRef = useRef<AbortController | null>(null);
 	const maxAttempts = 3;
 	const canAsk = Boolean(documentId);
@@ -48,12 +66,26 @@ export function AskSection({ documentId }: AskSectionProps) {
 			setMeta(null);
 			setError(null);
 			setRetryAttempt(0);
+			setStage(null);
+			setCompletedStages(new Set());
 
 			try {
 				await askStream(
 					value.question,
 					documentId,
 					{
+						onStatus: ({ stage: next }) => {
+							setStage((current) => {
+								if (current && current !== next) {
+									setCompletedStages((prev) => {
+										const updated = new Set(prev);
+										updated.add(current);
+										return updated;
+									});
+								}
+								return next;
+							});
+						},
 						onMeta: (payload) => {
 							setMeta(payload);
 							setStreamingText("");
@@ -62,6 +94,8 @@ export function AskSection({ documentId }: AskSectionProps) {
 						onRetry: (attempt) => {
 							setRetryAttempt(attempt);
 							setStatus("preparing");
+							setStage(null);
+							setCompletedStages(new Set());
 						},
 						onToken: (text) => {
 							setStatus((current) =>
@@ -70,6 +104,16 @@ export function AskSection({ documentId }: AskSectionProps) {
 							setStreamingText((current) => current + text);
 						},
 						onDone: () => {
+							setStage((current) => {
+								if (current) {
+									setCompletedStages((prev) => {
+										const updated = new Set(prev);
+										updated.add(current);
+										return updated;
+									});
+								}
+								return null;
+							});
 							setStatus("done");
 						},
 						onError: (message) => {
@@ -155,10 +199,14 @@ export function AskSection({ documentId }: AskSectionProps) {
 						</p>
 					) : null}
 
-					{status === "preparing" && retryAttempt === 0 ? (
-						<p className="m-0 text-sm text-(--sea-ink-soft)">
-							Retrieving context…
-						</p>
+					{(status === "preparing" || status === "streaming") &&
+					retryAttempt === 0 &&
+					(stage !== null || completedStages.size > 0) ? (
+						<StageTracker
+							currentStage={stage}
+							completedStages={completedStages}
+							done={status === "streaming" && stage === null}
+						/>
 					) : null}
 
 					{meta ? (
@@ -211,5 +259,80 @@ export function AskSection({ documentId }: AskSectionProps) {
 				</div>
 			</WorkspacePanel>
 		</section>
+	);
+}
+
+interface StageTrackerProps {
+	currentStage: AskStreamStage | null;
+	completedStages: Set<AskStreamStage>;
+	done: boolean;
+}
+
+function StageTracker({
+	currentStage,
+	completedStages,
+	done,
+}: StageTrackerProps) {
+	return (
+		<ol className="m-0 mb-4 flex flex-col gap-1.5 rounded-lg border border-(--line) bg-(--chip-bg)/40 px-3 py-2 text-sm">
+			{STAGE_ORDER.map((s) => {
+				const isCompleted = completedStages.has(s) || (done && s === "generating");
+				const isActive = currentStage === s && !isCompleted;
+				const isPending = !isCompleted && !isActive;
+				return (
+					<li
+						key={s}
+						className="flex items-center gap-2"
+						aria-current={isActive ? "step" : undefined}
+					>
+						<StageIcon
+							state={
+								isCompleted ? "done" : isActive ? "active" : "pending"
+							}
+						/>
+						<span
+							className={
+								isCompleted
+									? "text-(--sea-ink)"
+									: isActive
+										? "font-medium text-(--sea-ink)"
+										: "text-(--sea-ink-soft)"
+							}
+						>
+							{STAGE_LABELS[s]}
+							{isActive ? "…" : ""}
+						</span>
+						{isPending ? null : null}
+					</li>
+				);
+			})}
+		</ol>
+	);
+}
+
+function StageIcon({ state }: { state: "pending" | "active" | "done" }) {
+	if (state === "done") {
+		return (
+			<span
+				aria-hidden
+				className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--sea-ink)/15 text-[10px] text-(--sea-ink)"
+			>
+				✓
+			</span>
+		);
+	}
+	if (state === "active") {
+		return (
+			<span
+				aria-hidden
+				className="inline-block h-3 w-3 animate-pulse rounded-full bg-(--sea-ink)"
+			/>
+		);
+	}
+	return (
+		<span
+			aria-hidden
+			className="inline-block h-3 w-3 rounded-full border border-(--line)"
+		/>
 	);
 }

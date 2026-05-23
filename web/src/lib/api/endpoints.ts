@@ -4,6 +4,7 @@ import type {
 	AskResponse,
 	AskStreamHandlers,
 	AskStreamMeta,
+	AskStreamStatus,
 	EnhanceResponse,
 	HealthResponse,
 	IngestResponse,
@@ -47,6 +48,10 @@ export function askStream(
 			document_id: documentId,
 		} satisfies AskRequest,
 		(event, data) => {
+			if (event === "status") {
+				handlers.onStatus?.(data as AskStreamStatus);
+				return;
+			}
 			if (event === "meta") {
 				handlers.onMeta?.(data as AskStreamMeta);
 				return;

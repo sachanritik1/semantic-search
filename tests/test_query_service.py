@@ -283,8 +283,17 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream(
     ):
         gen = service.stream_ask("question?", document_id="doc-1")
         events: list[dict] = []
-        events.append(await gen.__anext__())  # meta
-        events.append(await gen.__anext__())  # first token
+        # Drain status/meta frames until the first token arrives, then
+        # disconnect mid-stream and verify the bg task still completes.
+        meta_event: dict | None = None
+        first_token: dict | None = None
+        async for ev in gen:
+            events.append(ev)
+            if ev["event"] == "meta":
+                meta_event = ev
+            elif ev["event"] == "token":
+                first_token = ev
+                break
         await gen.aclose()
 
         # Let the detached bg task complete (LLM finish + cache write).
@@ -296,11 +305,127 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream(
         async for ev in service.stream_ask("question?", document_id="doc-1"):
             replay.append(ev)
 
-    assert events[0]["event"] == "meta"
-    assert events[1]["event"] == "token"
+    assert meta_event is not None
+    assert first_token is not None
+    assert first_token["event"] == "token"
     cached_token = next(ev for ev in replay if ev["event"] == "token")
     assert cached_token["data"]["text"] == "Hello world"
     assert any(ev["event"] == "done" and ev["data"]["cache_hit"] for ev in replay)
+
+
+@pytest.mark.asyncio
+async def test_stream_ask_emits_stage_status_events_in_order():
+    """The streaming endpoint should announce each pipeline stage before it
+    starts so the UI can render a progress indicator that updates in real time.
+    """
+
+    import asyncio
+
+    llm = MagicMock()
+
+    async def fake_stream_text(prompt: str, **kwargs):
+        yield "ok"
+
+    llm.stream_text = fake_stream_text
+
+    enhancer = MagicMock()
+    enhancer.enhance.return_value = ["q1", "q2"]
+
+    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+
+    fused = [Document(page_content="a", metadata={"chunk_id": "1"})]
+    selected = [
+        Document(page_content="a", metadata={"chunk_id": "1", "rerank_score": 9}),
+    ]
+
+    with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[MagicMock()],
+        ),
+        patch.object(service, "_retrieve_dense", return_value=[]),
+        patch.object(service, "_build_sparse_retriever", return_value=(MagicMock(), [])),
+        patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
+        patch(
+            "app.services.query_service.merge_hit_lists",
+            side_effect=lambda hits: hits,
+        ),
+        patch(
+            "app.services.query_service.fuse_documents",
+            return_value=fused,
+        ),
+        patch(
+            "app.services.query_service.filter_fused_documents",
+            return_value=fused,
+        ),
+        patch(
+            "app.services.query_service.re_rank_docs",
+            return_value=RerankResult(docs=selected, failed=False),
+        ),
+        patch(
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
+        ),
+    ):
+        events: list[dict] = []
+        async for ev in service.stream_ask("question?", document_id="doc-1"):
+            events.append(ev)
+
+    stages = [ev["data"]["stage"] for ev in events if ev["event"] == "status"]
+    assert stages == [
+        "enhancing_query",
+        "retrieving",
+        "reranking",
+        "generating",
+    ]
+
+    event_types = [ev["event"] for ev in events]
+    assert event_types.index("meta") < event_types.index("token")
+    assert "done" in event_types
+
+    # Let any detached background completion task finish before exiting so the
+    # tests don't leak warnings about pending tasks.
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
+    """If retrieval returns nothing, we should not announce a reranking stage."""
+
+    import asyncio
+
+    llm = MagicMock()
+
+    async def fake_stream_text(prompt: str, **kwargs):
+        yield "ok"
+
+    llm.stream_text = fake_stream_text
+
+    enhancer = MagicMock()
+    enhancer.enhance.return_value = ["q1"]
+
+    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+
+    with (
+        patch(
+            "app.services.query_service.list_chunks_for_document",
+            return_value=[],
+        ),
+        patch(
+            "app.services.query_service.build_ask_messages",
+            return_value=("system", "user"),
+        ),
+    ):
+        events: list[dict] = []
+        async for ev in service.stream_ask("question?", document_id="doc-1"):
+            events.append(ev)
+
+    stages = [ev["data"]["stage"] for ev in events if ev["event"] == "status"]
+    assert stages == ["enhancing_query", "retrieving", "generating"]
+
+    for _ in range(5):
+        await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio

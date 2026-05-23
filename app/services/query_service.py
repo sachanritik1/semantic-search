@@ -51,45 +51,33 @@ class QueryService:
         self.query_enhancer = query_enhancer
         self.semantic_cache = semantic_cache
 
-    def _prepare_ask(self, question: str, *, document_id: str) -> PrepareResult:
-        if self.semantic_cache:
-            cached = self.semantic_cache.lookup(question, document_id)
-            if cached is not None:
-                return PrepareResult(
-                    result_base={
-                        "original_question": cached["original_question"],
-                        "enhanced_question": cached["enhanced_question"],
-                    },
-                    system_prompt=None,
-                    user_message=None,
-                    cached_response=cached["response"],
-                    cache_hit=True,
-                )
+    def _cache_lookup(self, question: str, document_id: str) -> dict | None:
+        if not self.semantic_cache:
+            return None
+        return self.semantic_cache.lookup(question, document_id)
 
+    def _enhance_queries(self, question: str) -> tuple[list[str], dict]:
         queries = self.query_enhancer.enhance(question)
         if not queries:
             queries = [question]
-
-        enhanced_joined = " | ".join(queries)
         result_base = {
             "original_question": question,
-            "enhanced_question": enhanced_joined,
+            "enhanced_question": " | ".join(queries),
             "enhanced_questions": queries,
         }
+        return queries, result_base
 
+    def _retrieve_fused(
+        self,
+        queries: list[str],
+        document_id: str,
+    ) -> list[Document]:
         if not list_chunks_for_document(document_id):
             logger.info(
                 "No chunks found for document_id=%s; answering without retrieval context",
                 document_id,
             )
-            system_prompt, user_message = build_ask_messages(docs=[], question=question)
-            return PrepareResult(
-                result_base=result_base,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                cached_response=None,
-                cache_hit=False,
-            )
+            return []
 
         all_dense: list[tuple[Document, float]] = []
         all_sparse: list[tuple[Document, float]] = []
@@ -115,42 +103,64 @@ class QueryService:
             dense_weight=settings.DENSE_WEIGHT,
             sparse_weight=settings.SPARSE_WEIGHT,
         )
-        fused = filter_fused_documents(
+        return filter_fused_documents(
             fused,
             min_score=settings.FUSION_MIN_SCORE,
             min_docs=settings.FUSION_MIN_DOCS,
         )
 
-        if not fused:
-            system_prompt, user_message = build_ask_messages(docs=[], question=question)
-            return PrepareResult(
-                result_base=result_base,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                cached_response=None,
-                cache_hit=False,
-            )
-
+    def _rerank(
+        self,
+        question: str,
+        fused: list[Document],
+    ) -> list[Document]:
         rerank_result = re_rank_docs(
             question,
             fused,
             top_n=settings.RERANK_TOP_K,
         )
-
         if rerank_result.failed:
             logger.warning(
                 "Rerank failed; using all %d fused documents for answer context",
                 len(fused),
             )
-            answer_docs = fused
-        else:
-            answer_docs = rerank_result.docs
+            return fused
+        return rerank_result.docs
 
-        search_query = enhanced_joined if len(queries) > 1 else queries[0]
-        system_prompt, user_message = build_ask_messages(
+    def _build_messages_for(
+        self,
+        question: str,
+        queries: list[str],
+        answer_docs: list[Document],
+    ) -> tuple[str, str]:
+        if not answer_docs:
+            return build_ask_messages(docs=[], question=question)
+        search_query = " | ".join(queries) if len(queries) > 1 else queries[0]
+        return build_ask_messages(
             docs=answer_docs,
             question=question,
             search_query=search_query,
+        )
+
+    def _prepare_ask(self, question: str, *, document_id: str) -> PrepareResult:
+        cached = self._cache_lookup(question, document_id)
+        if cached is not None:
+            return PrepareResult(
+                result_base={
+                    "original_question": cached["original_question"],
+                    "enhanced_question": cached["enhanced_question"],
+                },
+                system_prompt=None,
+                user_message=None,
+                cached_response=cached["response"],
+                cache_hit=True,
+            )
+
+        queries, result_base = self._enhance_queries(question)
+        fused = self._retrieve_fused(queries, document_id)
+        answer_docs = self._rerank(question, fused) if fused else []
+        system_prompt, user_message = self._build_messages_for(
+            question, queries, answer_docs
         )
         return PrepareResult(
             result_base=result_base,
@@ -204,30 +214,59 @@ class QueryService:
         get_client().update_current_span(
             input={"question": question, "document_id": document_id},
         )
-        # Emit an immediate frame so the SSE response starts flowing to the
-        # client before we begin the (potentially slow) retrieval pipeline.
-        # Without this, the browser sees only the response headers until
-        # _prepare_ask finishes (query enhancement, retrieval, rerank).
-        yield {"event": "status", "data": {"stage": "preparing"}}
-
-        # Retrieval, enhancement, and reranking are all synchronous and can
-        # take several seconds. Run them in a worker thread so the event loop
-        # stays responsive (heartbeats fire, client can disconnect cleanly).
-        prepared = await asyncio.to_thread(
-            self._prepare_ask,
+        # Cache lookup is fast but still touches sqlite + numpy; run off the
+        # event loop so the very first SSE write happens immediately and the
+        # client can render "preparing" while we look.
+        cached = await asyncio.to_thread(
+            self._cache_lookup,
             question,
-            document_id=document_id,
+            document_id,
         )
-        meta = {**prepared.result_base}
-        if prepared.cache_hit:
-            meta["cache_hit"] = True
-        yield {"event": "meta", "data": meta}
-
-        if prepared.cache_hit:
-            get_client().update_current_span(output=prepared.cached_response)
-            yield {"event": "token", "data": {"text": prepared.cached_response}}
+        if cached is not None:
+            meta = {
+                "original_question": cached["original_question"],
+                "enhanced_question": cached["enhanced_question"],
+                "cache_hit": True,
+            }
+            yield {"event": "meta", "data": meta}
+            get_client().update_current_span(output=cached["response"])
+            yield {"event": "token", "data": {"text": cached["response"]}}
             yield {"event": "done", "data": {"cache_hit": True}}
             return
+
+        # Each stage runs in a worker thread, with a status event emitted
+        # before it starts so the UI can show what is happening right now.
+        yield {"event": "status", "data": {"stage": "enhancing_query"}}
+        queries, result_base = await asyncio.to_thread(
+            self._enhance_queries, question
+        )
+
+        yield {"event": "status", "data": {"stage": "retrieving"}}
+        fused = await asyncio.to_thread(
+            self._retrieve_fused, queries, document_id
+        )
+
+        if fused:
+            yield {"event": "status", "data": {"stage": "reranking"}}
+            answer_docs = await asyncio.to_thread(self._rerank, question, fused)
+        else:
+            answer_docs = []
+
+        system_prompt, user_message = await asyncio.to_thread(
+            self._build_messages_for, question, queries, answer_docs
+        )
+
+        meta = {**result_base}
+        yield {"event": "meta", "data": meta}
+        yield {"event": "status", "data": {"stage": "generating"}}
+
+        prepared = PrepareResult(
+            result_base=result_base,
+            system_prompt=system_prompt,
+            user_message=user_message,
+            cached_response=None,
+            cache_hit=False,
+        )
 
         # Detach LLM generation so it completes even if the SSE consumer
         # disconnects mid-stream. The bg task writes the full response to the

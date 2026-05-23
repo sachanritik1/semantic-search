@@ -26,7 +26,18 @@ export interface AskStreamMeta {
 	cache_hit?: boolean;
 }
 
+export type AskStreamStage =
+	| "enhancing_query"
+	| "retrieving"
+	| "reranking"
+	| "generating";
+
+export interface AskStreamStatus {
+	stage: AskStreamStage;
+}
+
 export interface AskStreamHandlers {
+	onStatus?: (status: AskStreamStatus) => void;
 	onMeta?: (meta: AskStreamMeta) => void;
 	onToken?: (text: string) => void;
 	onDone?: (data: { cache_hit: boolean }) => void;
