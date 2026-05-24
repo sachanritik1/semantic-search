@@ -6,16 +6,23 @@ from qdrant_client.http import models
 
 from app.config import settings
 
-client = QdrantClient(url=settings.QDRANT_URL)
+
+def _qdrant_client_kwargs() -> dict[str, str]:
+    kwargs: dict[str, str] = {"url": settings.QDRANT_URL}
+    if settings.QDRANT_API_KEY:
+        kwargs["api_key"] = settings.QDRANT_API_KEY
+    return kwargs
+
+
+def get_qdrant_client() -> QdrantClient:
+    return QdrantClient(**_qdrant_client_kwargs(), check_compatibility=False)
 
 
 def get_vector_store(embeddings: Embeddings) -> QdrantVectorStore:
     return QdrantVectorStore.from_existing_collection(
         embedding=embeddings,
-        url=settings.QDRANT_URL,
         collection_name=settings.QDRANT_COLLECTION_NAME,
-        api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
-        create_collection_if_missing=True,
+        **_qdrant_client_kwargs(),
     )
 
 
@@ -47,14 +54,17 @@ def upsert_documents(embeddings: Embeddings, documents: list[Document]) -> None:
         return
 
     ids = _chunk_ids(documents)
-    try:
-        vector_store = get_vector_store(embeddings)
-        vector_store.add_documents(documents, ids=ids)
-    except Exception:
+    client = get_qdrant_client()
+
+    if not client.collection_exists(settings.QDRANT_COLLECTION_NAME):
         QdrantVectorStore.from_documents(
             documents=documents,
             embedding=embeddings,
-            url=settings.QDRANT_URL,
             collection_name=settings.QDRANT_COLLECTION_NAME,
             ids=ids,
+            **_qdrant_client_kwargs(),
         )
+        return
+
+    vector_store = get_vector_store(embeddings)
+    vector_store.add_documents(documents, ids=ids)

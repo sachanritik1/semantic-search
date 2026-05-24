@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.db.ask_cache_store import AskCacheRow  # noqa: F401
-from app.db.document_store import Base, DocumentChunk  # noqa: F401
+from app.db.document_store import Base, DocumentChunk, _normalize_database_url  # noqa: F401
 
 config = context.config
 
@@ -13,7 +13,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", _normalize_database_url(settings.DATABASE_URL))
 
 
 def run_migrations_offline() -> None:
