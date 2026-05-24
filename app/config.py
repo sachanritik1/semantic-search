@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
 
     # Query enhancement (optional override; defaults to provider model)
-    ENHANCER_MODEL: str | None = "nvidia/nemotron-nano-9b-v2:free"
+    ENHANCER_MODEL: str | None = "openai/gpt-oss-20b:free"
 
     # Reasoning
     ENABLE_REASONING: bool = False
@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = (
         "postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search"
     )
+
+    # Hugging Face Hub (optional; avoids unauthenticated download warnings)
+    HF_TOKEN: str = ""
+
+    # Embeddings
+    EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Vector store
     QDRANT_URL: str = "http://localhost:6333"

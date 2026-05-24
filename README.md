@@ -103,6 +103,8 @@ QDRANT_COLLECTION_NAME=semantic-search
 # Chunk metadata store (defaults match docker-compose.yml)
 DATABASE_URL=postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search
 EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+# Optional: Hugging Face token for model downloads (https://huggingface.co/settings/tokens)
+HF_TOKEN=
 LANGFUSE_TRACING_ENABLED=true
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
@@ -255,7 +257,8 @@ pytest
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant HTTP endpoint |
 | `QDRANT_COLLECTION_NAME` | `semantic-search` | Collection name |
 | `DATABASE_URL` | `postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search` | Chunk metadata store |
-| `EMBEDDING_MODEL_NAME` | `all-MiniLM-L6-v2` | HuggingFace embedding model |
+| `EMBEDDING_MODEL_NAME` | `sentence-transformers/all-MiniLM-L6-v2` | HuggingFace embedding model |
+| `HF_TOKEN` | _(unset)_ | Hugging Face Hub token for authenticated model downloads |
 | `RERANK_MODEL_NAME` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | CrossEncoder rerank model |
 | `ENHANCER_MODEL` | _(provider default)_ | Override model for query enhancement |
 | `ENABLE_REASONING` | `false` | Enable reasoning mode where supported |

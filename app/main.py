@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 from langfuse import Langfuse, get_client
 
 from app.config import settings
+from app.utils.huggingface import configure_hf_hub
+
+configure_hf_hub()
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.document_store import check_db_connection
+from app.db.vector_store import ensure_payload_indexes
 from app.routers import (
     compare,
     enhance,
@@ -56,6 +60,7 @@ async def lifespan(app: FastAPI):
             host=settings.LANGFUSE_HOST,
         )
     await asyncio.to_thread(check_db_connection)
+    await asyncio.to_thread(ensure_payload_indexes)
     await _warm_reranker()
     try:
         yield
