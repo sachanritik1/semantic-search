@@ -56,13 +56,13 @@ def normalize_llm_content(content: Any) -> str:
                 if flattened:
                     return flattened
             if isinstance(parsed, dict):
-                inner = _flatten_blocks([parsed])
-                if inner:
-                    return inner
+                flattened_dict = _flatten_blocks([parsed])
+                if flattened_dict:
+                    return flattened_dict
             # Broken wrapper JSON: extract inner array from "text":"[...]"
-            inner = _extract_text_field_array(text)
-            if inner:
-                return inner
+            extracted_array = _extract_text_field_array(text)
+            if extracted_array:
+                return extracted_array
         return text
 
     if isinstance(content, dict):
@@ -120,7 +120,9 @@ def _is_rank_item(value: Any) -> bool:
 def _looks_like_rank_array(values: list[Any]) -> bool:
     if not values:
         return False
-    if all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in values):
+    if all(
+        isinstance(item, (int, float)) and not isinstance(item, bool) for item in values
+    ):
         return True
     return all(_is_rank_item(item) for item in values)
 

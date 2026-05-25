@@ -16,7 +16,9 @@ def _extract_cached_tokens(usage: dict[str, Any]) -> int | None:
     )
 
 
-def annotate_cost(usage: dict[str, Any] | None, *, model: str | None) -> dict[str, Any] | None:
+def annotate_cost(
+    usage: dict[str, Any] | None, *, model: str | None
+) -> dict[str, Any] | None:
     """Compute estimated cost and attach it to ``usage`` in-place.
 
     OpenRouter (and some providers) include a numeric ``cost`` field on usage.

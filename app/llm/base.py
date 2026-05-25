@@ -1,4 +1,4 @@
-    # app/llm/base.py
+# app/llm/base.py
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
@@ -11,6 +11,7 @@ class LLMResponse:
     """
     Normalized response returned by any LLM provider.
     """
+
     content: str
     model: Optional[str] = None
     usage: Optional[Dict[str, Any]] = None

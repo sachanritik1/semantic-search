@@ -85,7 +85,9 @@ def test_estimate_cost_charges_fresh_input_minus_cached():
 
 
 def test_estimate_cost_resolves_openrouter_prefix():
-    cost_a = estimate_cost("openai/gpt-4o", {"input_tokens": 1000, "output_tokens": 1000})
+    cost_a = estimate_cost(
+        "openai/gpt-4o", {"input_tokens": 1000, "output_tokens": 1000}
+    )
     cost_b = estimate_cost("gpt-4o", {"input_tokens": 1000, "output_tokens": 1000})
     assert cost_a == cost_b
 
@@ -123,7 +125,9 @@ def test_register_pricing_overrides_existing():
 def test_pricing_overrides_loaded_from_env(tmp_path, monkeypatch):
     override_path = tmp_path / "pricing.json"
     override_path.write_text(
-        json.dumps({"env-loaded-model": {"input": 0.5, "output": 1.5, "cached_input": 0.1}})
+        json.dumps(
+            {"env-loaded-model": {"input": 0.5, "output": 1.5, "cached_input": 0.1}}
+        )
     )
     monkeypatch.setenv("LLM_PRICING_JSON_PATH", str(override_path))
     # Force re-load by toggling the loaded flag.

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from sqlalchemy import DateTime, Integer, String, Text, delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -44,7 +46,8 @@ def prune_expired(ttl_seconds: int, *, now: datetime | None = None) -> int:
             delete(AskCacheRow).where(AskCacheRow.created_at < cutoff)
         )
         session.commit()
-        return result.rowcount or 0
+        rowcount = cast(CursorResult[object], result).rowcount
+        return rowcount or 0
 
 
 def list_rows(

@@ -25,7 +25,9 @@ def get_llm_service() -> LLMService:
     return LLMService(get_llm())
 
 
-def get_query_enhancer(llm_service: LLMService = Depends(get_llm_service)) -> QueryEnhancer:
+def get_query_enhancer(
+    llm_service: LLMService = Depends(get_llm_service),
+) -> QueryEnhancer:
     from app.config import settings
 
     return QueryEnhancer(

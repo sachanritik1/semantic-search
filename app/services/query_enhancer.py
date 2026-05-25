@@ -53,7 +53,7 @@ def _parse_queries(text: str, original: str) -> list[str]:
         else:
             queries = [line.strip() for line in stripped.splitlines() if line.strip()]
 
-    queries = [q.strip("\"'") for q in queries if q.strip()][: _QUERY_COUNT]
+    queries = [q.strip("\"'") for q in queries if q.strip()][:_QUERY_COUNT]
 
     if not queries:
         queries = [original]

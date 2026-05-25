@@ -35,7 +35,9 @@ async def test_ask_uses_only_reranked_docs_on_success():
             return_value=[MagicMock()],
         ),
         patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(service, "_build_sparse_retriever", return_value=(MagicMock(), [])),
+        patch.object(
+            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
+        ),
         patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
             "app.services.query_service.merge_hit_lists",
@@ -89,7 +91,9 @@ async def test_ask_uses_all_fused_on_rerank_failure():
             return_value=[MagicMock()],
         ),
         patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(service, "_build_sparse_retriever", return_value=(MagicMock(), [])),
+        patch.object(
+            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
+        ),
         patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
             "app.services.query_service.merge_hit_lists",
@@ -344,7 +348,9 @@ async def test_stream_ask_emits_stage_status_events_in_order():
             return_value=[MagicMock()],
         ),
         patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(service, "_build_sparse_retriever", return_value=(MagicMock(), [])),
+        patch.object(
+            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
+        ),
         patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
             "app.services.query_service.merge_hit_lists",
@@ -435,7 +441,6 @@ async def test_stream_generate_async_yields_chunks_incrementally():
     First chunk must arrive before subsequent chunks are produced.
     """
 
-    import asyncio
     import time
 
     from app.llm.base import BaseLLM, LLMResponse

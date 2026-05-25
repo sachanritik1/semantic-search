@@ -27,7 +27,9 @@ class SparseRetriever:
     tokenized_docs: List[List[str]] = field(default_factory=list)
     bm25: Optional[BM25Okapi] = None
 
-    def build_index(self, documents: Iterable[str], tokenizer: Optional[Tokenizer] = None) -> None:
+    def build_index(
+        self, documents: Iterable[str], tokenizer: Optional[Tokenizer] = None
+    ) -> None:
         """Builds the BM25 index from the provided documents.
 
         If `tokenizer` is provided it will be used instead of the default.

@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from app.config import settings
 from app.llm.base import BaseLLM, LLMResponse
@@ -14,7 +15,7 @@ from app.utils.llm_content import normalize_llm_content
 def _build_messages(prompt: str, system_prompt: str | None) -> list:
     messages: list = []
     if system_prompt:
-        content: str | list[dict[str, Any]] = system_prompt
+        content: str | list[str | dict[Any, Any]] = system_prompt
         if settings.PROMPT_CACHE_ENABLED:
             content = [
                 {
@@ -38,15 +39,19 @@ def _extract_usage(response: Any) -> dict[str, Any] | None:
 class OpenRouterLLM(BaseLLM):
     def __init__(self, api_key: str, model: str):
         if not api_key:
-            raise ValueError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
+            raise ValueError(
+                "OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter"
+            )
         if not model:
-            raise ValueError("OPENROUTER_MODEL is required when LLM_PROVIDER=openrouter")
+            raise ValueError(
+                "OPENROUTER_MODEL is required when LLM_PROVIDER=openrouter"
+            )
 
         self.model = model
         # OpenRouter exposes an OpenAI-compatible API under this base URL.
         self.client = ChatOpenAI(
             model=model,
-            api_key=api_key,
+            api_key=SecretStr(api_key),
             base_url="https://openrouter.ai/api/v1",
         )
 

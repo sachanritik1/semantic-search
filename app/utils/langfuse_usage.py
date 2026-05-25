@@ -14,6 +14,8 @@ def to_langfuse_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
         out["output"] = v
     if (v := usage.get("total_tokens")) is not None:
         out["total"] = v
-    if (v := usage.get("cached_tokens") or usage.get("cached_content_token_count")) is not None:
+    if (
+        v := usage.get("cached_tokens") or usage.get("cached_content_token_count")
+    ) is not None:
         out["cache_read_input_tokens"] = v
     return out or None

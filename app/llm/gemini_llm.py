@@ -55,7 +55,9 @@ class GeminiLLM(BaseLLM):
         system_prompt: str | None = None,
         cache_key: str | None = None,
     ) -> LLMResponse:
-        del cache_key  # Gemini implicit cache uses system_instruction; no cache_key API yet
+        del (
+            cache_key
+        )  # Gemini implicit cache uses system_instruction; no cache_key API yet
         use_model = model or self.model
 
         response = self.client.models.generate_content(  # type: ignore

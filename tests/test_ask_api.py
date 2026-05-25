@@ -2,7 +2,6 @@ import asyncio
 import json
 from unittest.mock import MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -109,4 +108,3 @@ def test_ask_stream_emits_heartbeats(monkeypatch):
 
     assert response.status_code == 200
     assert ": ping" in response.text
-

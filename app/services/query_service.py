@@ -189,6 +189,9 @@ class QueryService:
             get_client().update_current_span(output=prepared.cached_response)
             return result
 
+        if prepared.user_message is None:
+            raise RuntimeError("Prepared ask payload missing user message")
+
         response = self.llm_service.generate_text(
             prepared.user_message,
             system_prompt=prepared.system_prompt,
@@ -237,14 +240,10 @@ class QueryService:
         # Each stage runs in a worker thread, with a status event emitted
         # before it starts so the UI can show what is happening right now.
         yield {"event": "status", "data": {"stage": "enhancing_query"}}
-        queries, result_base = await asyncio.to_thread(
-            self._enhance_queries, question
-        )
+        queries, result_base = await asyncio.to_thread(self._enhance_queries, question)
 
         yield {"event": "status", "data": {"stage": "retrieving"}}
-        fused = await asyncio.to_thread(
-            self._retrieve_fused, queries, document_id
-        )
+        fused = await asyncio.to_thread(self._retrieve_fused, queries, document_id)
 
         if fused:
             yield {"event": "status", "data": {"stage": "reranking"}}
@@ -277,6 +276,8 @@ class QueryService:
 
         async def _drive_and_cache() -> None:
             try:
+                if prepared.user_message is None:
+                    raise RuntimeError("Prepared ask payload missing user message")
                 async for chunk in self.llm_service.stream_text(
                     prepared.user_message,
                     system_prompt=prepared.system_prompt,
@@ -286,7 +287,9 @@ class QueryService:
                     queue.put_nowait(chunk)
             except BaseException as exc:
                 queue.put_nowait(exc)
-                logger.exception("Detached LLM stream failed for document_id=%s", document_id)
+                logger.exception(
+                    "Detached LLM stream failed for document_id=%s", document_id
+                )
                 return
             finally:
                 queue.put_nowait(_SENTINEL)
@@ -368,9 +371,7 @@ class QueryService:
     ) -> list[tuple[Document, float]]:
         sparse, chunks = sparse_and_chunks
         sparse_res = sparse.query(query, top_k=settings.RETRIEVAL_TOP_K)
-        hits = [
-            (chunk_to_document(chunks[idx]), score) for idx, score, _ in sparse_res
-        ]
+        hits = [(chunk_to_document(chunks[idx]), score) for idx, score, _ in sparse_res]
         logger.debug(
             "Retrieved %d sparse documents for document_id=%s query=%r",
             len(hits),

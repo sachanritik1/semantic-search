@@ -67,7 +67,9 @@ _DEFAULT_PRICING: dict[str, dict[str, float]] = {
     "google/gemini-2.5-flash": {"input": 0.30, "cached_input": 0.075, "output": 2.50},
 }
 
-_PRICING: dict[str, dict[str, float]] = {k.lower(): v for k, v in _DEFAULT_PRICING.items()}
+_PRICING: dict[str, dict[str, float]] = {
+    k.lower(): v for k, v in _DEFAULT_PRICING.items()
+}
 _OVERRIDES_LOADED = False
 
 
@@ -119,9 +121,7 @@ def _load_overrides_from_env() -> None:
             cached_input=float(rates["cached_input"])
             if "cached_input" in rates
             else None,
-            cache_write=float(rates["cache_write"])
-            if "cache_write" in rates
-            else None,
+            cache_write=float(rates["cache_write"]) if "cache_write" in rates else None,
         )
 
 
@@ -178,7 +178,9 @@ def estimate_cost(
     _load_overrides_from_env()
     rates = _lookup_rates(model)
     if rates is None:
-        logger.debug("No pricing registered for model=%s; skipping cost estimate", model)
+        logger.debug(
+            "No pricing registered for model=%s; skipping cost estimate", model
+        )
         return None
 
     n = _normalize_usage(usage)

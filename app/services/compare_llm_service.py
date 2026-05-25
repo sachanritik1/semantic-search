@@ -34,7 +34,7 @@ def _format_compare_documents(dense: list[dict], sparse: list[dict]) -> str:
         if len(content) > MAX_DOC_CHARS:
             content = content[:MAX_DOC_CHARS] + "..."
         blocks.append(
-            f"""<document id="dense-{item['index']}">
+            f"""<document id="dense-{item["index"]}">
 <source>dense</source>
 <content>
 {content}
@@ -47,9 +47,9 @@ def _format_compare_documents(dense: list[dict], sparse: list[dict]) -> str:
         if len(content) > MAX_DOC_CHARS:
             content = content[:MAX_DOC_CHARS] + "..."
         blocks.append(
-            f"""<document id="sparse-{item['index']}">
+            f"""<document id="sparse-{item["index"]}">
 <source>sparse</source>
-<bm25_score>{item.get('score')}</bm25_score>
+<bm25_score>{item.get("score")}</bm25_score>
 <content>
 {content}
 </content>

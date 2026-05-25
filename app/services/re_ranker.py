@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.documents import Document
 from langfuse import get_client, observe
@@ -110,9 +110,7 @@ def _build_rerank_trace(
         "candidate_count": len(docs),
         "selected_count": len(ranked),
         "candidates": candidates,
-        "selected_chunk_ids": [
-            (doc.metadata or {}).get("chunk_id") for doc in ranked
-        ],
+        "selected_chunk_ids": [(doc.metadata or {}).get("chunk_id") for doc in ranked],
         "error": error,
     }
 
@@ -172,9 +170,7 @@ def _apply_ranking(
         metadata = dict(source.metadata or {})
         metadata["rerank_logit"] = raw_logits.get(doc_id)
         metadata["rerank_score"] = score
-        ranked.append(
-            Document(page_content=source.page_content, metadata=metadata)
-        )
+        ranked.append(Document(page_content=source.page_content, metadata=metadata))
         if len(ranked) >= top_n:
             break
 
@@ -186,7 +182,7 @@ def _score_candidates(
     candidates: list[Document],
 ) -> tuple[list[tuple[int, float]], dict[int, float]]:
     pairs = [(query, doc.page_content) for doc in candidates]
-    logits = _get_cross_encoder().predict(pairs)
+    logits = _get_cross_encoder().predict(cast(Any, pairs))
     raw_list = [float(value) for value in logits]
     normalized = _normalize_scores(raw_list)
     raw_by_id = {doc_id: raw for doc_id, raw in enumerate(raw_list, start=1)}

@@ -100,7 +100,9 @@ def test_filter_fused_documents_drops_below_threshold():
 
 
 def test_filter_fused_documents_keeps_floor_when_too_few_qualify():
-    fused = [_fused_doc(f"c{i}", score) for i, score in enumerate([0.9, 0.1, 0.05, 0.02])]
+    fused = [
+        _fused_doc(f"c{i}", score) for i, score in enumerate([0.9, 0.1, 0.05, 0.02])
+    ]
     filtered = filter_fused_documents(fused, min_score=0.5, min_docs=3)
     assert len(filtered) == 3
     assert [d.metadata["chunk_id"] for d in filtered] == ["c0", "c1", "c2"]

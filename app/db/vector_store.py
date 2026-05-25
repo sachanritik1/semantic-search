@@ -37,7 +37,9 @@ def _chunk_ids(documents: list[Document]) -> list[str]:
     for doc in documents:
         chunk_id = (doc.metadata or {}).get("chunk_id")
         if not chunk_id:
-            raise ValueError("Each document must have chunk_id in metadata before upsert")
+            raise ValueError(
+                "Each document must have chunk_id in metadata before upsert"
+            )
         ids.append(str(chunk_id))
     return ids
 

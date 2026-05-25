@@ -37,7 +37,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("chunk_id"),
     )
     op.create_index("ix_document_chunks_chunk_id", "document_chunks", ["chunk_id"])
-    op.create_index("ix_document_chunks_document_id", "document_chunks", ["document_id"])
+    op.create_index(
+        "ix_document_chunks_document_id", "document_chunks", ["document_id"]
+    )
     op.create_index("ix_document_chunks_status", "document_chunks", ["status"])
     op.create_index("ix_document_chunks_tenant_id", "document_chunks", ["tenant_id"])
     op.create_index(
@@ -79,7 +81,9 @@ def downgrade() -> None:
     op.drop_index("ix_ask_cache_entries_created_at", table_name="ask_cache_entries")
     op.drop_table("ask_cache_entries")
 
-    op.drop_index("ix_document_chunks_document_chunk_index", table_name="document_chunks")
+    op.drop_index(
+        "ix_document_chunks_document_chunk_index", table_name="document_chunks"
+    )
     op.drop_index("ix_document_chunks_tenant_document", table_name="document_chunks")
     op.drop_index("ix_document_chunks_tenant_id", table_name="document_chunks")
     op.drop_index("ix_document_chunks_status", table_name="document_chunks")

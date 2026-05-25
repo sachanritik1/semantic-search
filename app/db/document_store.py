@@ -46,7 +46,9 @@ class DocumentChunk(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
-    status: Mapped[str] = mapped_column(String(16), default=CHUNK_STATUS_ACTIVE, index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), default=CHUNK_STATUS_ACTIVE, index=True
+    )
     meta: Mapped[dict] = mapped_column("metadata", _JSON, default=dict)
     embedding: Mapped[list[float]] = mapped_column(_JSON, default=list)
 
@@ -121,7 +123,9 @@ def save_documents(documents: Iterable[Document]) -> int:
     return len(chunks)
 
 
-def list_chunks(limit: Optional[int] = None, *, active_only: bool = True) -> List[DocumentChunk]:
+def list_chunks(
+    limit: Optional[int] = None, *, active_only: bool = True
+) -> List[DocumentChunk]:
     with SessionLocal() as session:
         stmt = select(DocumentChunk).order_by(DocumentChunk.id)
         if active_only:

@@ -103,7 +103,7 @@ class LLMService:
         system_prompt: str | None = None,
         cache_key: str | None = None,
     ) -> AsyncIterator[str]:
-        use_model = model or self.llm.model
+        use_model = model or getattr(self.llm, "model", None)
         get_client().update_current_generation(
             input=prompt,
             model=use_model,
