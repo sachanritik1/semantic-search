@@ -61,11 +61,11 @@ def test_re_rank_docs_ranks_by_cross_encoder_logits():
         Document(page_content="low", metadata={"fusion_score": 0.1}),
         Document(page_content="high", metadata={"fusion_score": 0.2}),
     ]
-    mock_model = MagicMock()
-    mock_model.predict.return_value = [-5.0, 8.0]
+    mock_reranker = MagicMock()
+    mock_reranker.score_pairs.return_value = [-5.0, 8.0]
 
     with (
-        patch("app.services.re_ranker._get_cross_encoder", return_value=mock_model),
+        patch("app.services.re_ranker._get_reranker", return_value=mock_reranker),
         patch("app.services.re_ranker.settings.RERANK_MIN_RELEVANCE", 4.0),
     ):
         result = re_rank_docs("query", docs, top_n=2)
@@ -78,10 +78,10 @@ def test_re_rank_docs_ranks_by_cross_encoder_logits():
 
 
 def test_re_rank_docs_returns_failed_on_predict_error():
-    mock_model = MagicMock()
-    mock_model.predict.side_effect = RuntimeError("model error")
+    mock_reranker = MagicMock()
+    mock_reranker.score_pairs.side_effect = RuntimeError("model error")
 
-    with patch("app.services.re_ranker._get_cross_encoder", return_value=mock_model):
+    with patch("app.services.re_ranker._get_reranker", return_value=mock_reranker):
         result = re_rank_docs(
             "query",
             [Document(page_content="a")],

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # Hugging Face Hub (optional; avoids unauthenticated download warnings)
     HF_TOKEN: str = ""
+    HF_INFERENCE_API_BASE: str = "https://api-inference.huggingface.co"
 
     # Embeddings
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 10
     FUSION_MIN_SCORE: float = 0.25
     FUSION_MIN_DOCS: int = 10
-    RERANK_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RERANK_MODEL_NAME: str = "ibm-research/re2g-reranker-nq"
     RERANK_TOP_K: int = 8
     RERANK_MIN_RELEVANCE: float = 4.0
 

@@ -1,10 +1,10 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
+from huggingface_hub import InferenceClient
 from langchain_core.documents import Document
 from langfuse import get_client, observe
-from sentence_transformers import CrossEncoder
 
 from app.config import settings
 
@@ -17,7 +17,65 @@ class RerankResult:
     failed: bool
 
 
-_model: CrossEncoder | None = None
+class HuggingFaceApiReranker:
+    def __init__(
+        self,
+        model_name: str,
+        token: str | None,
+        provider: str = "hf-inference",
+    ) -> None:
+        self._model_name = model_name
+        self._client = InferenceClient(
+            provider=provider,
+            api_key=token or None,
+        )
+
+    @staticmethod
+    def _score_from_item(item: Any) -> float:
+        if isinstance(item, dict):
+            if "score" in item:
+                return float(item["score"])
+            scores = item.get("scores")
+            if isinstance(scores, list) and scores:
+                return float(max(scores))
+            if "similarity" in item:
+                return float(item["similarity"])
+        if isinstance(item, list):
+            if item and isinstance(item[0], dict):
+                return float(max(entry.get("score", 0.0) for entry in item))
+            if item and isinstance(item[0], (int, float)):
+                return float(max(item))
+        if isinstance(item, (int, float)):
+            return float(item)
+        return 0.0
+
+    @classmethod
+    def _parse_scores(cls, payload: Any, expected: int) -> list[float]:
+        if isinstance(payload, list):
+            if not payload:
+                return []
+            if len(payload) == expected and isinstance(payload[0], (int, float)):
+                return [float(value) for value in payload]
+            if len(payload) == expected and isinstance(payload[0], list):
+                return [cls._score_from_item(item) for item in payload]
+            if len(payload) == expected and isinstance(payload[0], dict):
+                return [cls._score_from_item(item) for item in payload]
+            if isinstance(payload[0], dict):
+                return [cls._score_from_item(payload)]
+        return [cls._score_from_item(payload)]
+
+    def score_pairs(self, pairs: list[tuple[str, str]]) -> list[float]:
+        if not pairs:
+            return []
+        payload = [{"text": query, "text_pair": passage} for query, passage in pairs]
+        output = self._client.text_classification(
+            payload,
+            model=self._model_name,
+        )
+        return self._parse_scores(output, expected=len(pairs))
+
+
+_model: HuggingFaceApiReranker | None = None
 
 
 def _retrieval_methods(meta: dict[str, Any]) -> list[str]:
@@ -119,16 +177,22 @@ def _record_rerank_trace(payload: dict[str, Any]) -> None:
     get_client().update_current_span(output=payload)
 
 
-def _get_cross_encoder() -> CrossEncoder:
+def _get_reranker() -> HuggingFaceApiReranker:
     global _model
     if _model is None:
-        logger.info("Loading cross-encoder model: %s", settings.RERANK_MODEL_NAME)
-        _model = CrossEncoder(settings.RERANK_MODEL_NAME)
+        logger.info(
+            "Loading reranker via Hugging Face Inference API: %s",
+            settings.RERANK_MODEL_NAME,
+        )
+        _model = HuggingFaceApiReranker(
+            settings.RERANK_MODEL_NAME,
+            token=settings.HF_TOKEN.strip() or None,
+        )
     return _model
 
 
 def preload_reranker() -> None:
-    _get_cross_encoder()
+    _get_reranker()
 
 
 def _normalize_scores(raw_logits: list[float]) -> list[float]:
@@ -186,8 +250,7 @@ def _score_candidates(
     candidates: list[Document],
 ) -> tuple[list[tuple[int, float]], dict[int, float]]:
     pairs = [(query, doc.page_content) for doc in candidates]
-    logits = _get_cross_encoder().predict(cast(Any, pairs))
-    raw_list = [float(value) for value in logits]
+    raw_list = [float(value) for value in _get_reranker().score_pairs(pairs)]
     normalized = _normalize_scores(raw_list)
     raw_by_id = {doc_id: raw for doc_id, raw in enumerate(raw_list, start=1)}
     entries = sorted(
