@@ -51,6 +51,11 @@ async def preload_models() -> None:
     await _warm_reranker()
 
 
+async def _deferred_preload_models(delay_seconds: float = 5.0) -> None:
+    await asyncio.sleep(delay_seconds)
+    await preload_models()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
@@ -61,7 +66,7 @@ async def lifespan(app: FastAPI):
         )
     await asyncio.to_thread(check_db_connection)
     await asyncio.to_thread(ensure_payload_indexes)
-    asyncio.create_task(preload_models())
+    asyncio.create_task(_deferred_preload_models())
     try:
         yield
     finally:
