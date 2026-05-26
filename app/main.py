@@ -35,27 +35,6 @@ logging.basicConfig(
 logging.getLogger("app").setLevel(_log_level)
 
 
-async def _warm_reranker() -> None:
-    # Loading the cross-encoder downloads ~80MB from HuggingFace on the first
-    # call. Doing it here keeps the latency off the request path so the first
-    # /ask doesn't appear to "hang".
-    try:
-        from app.services.re_ranker import preload_reranker
-
-        await asyncio.to_thread(preload_reranker)
-    except Exception:
-        logger.exception("Failed to pre-warm cross-encoder; first /ask will be slow")
-
-
-async def preload_models() -> None:
-    await _warm_reranker()
-
-
-async def _deferred_preload_models(delay_seconds: float = 5.0) -> None:
-    await asyncio.sleep(delay_seconds)
-    await preload_models()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
@@ -66,7 +45,6 @@ async def lifespan(app: FastAPI):
         )
     await asyncio.to_thread(check_db_connection)
     await asyncio.to_thread(ensure_payload_indexes)
-    asyncio.create_task(_deferred_preload_models())
     try:
         yield
     finally:

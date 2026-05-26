@@ -1,12 +1,12 @@
 from app.db.document_store import list_chunks
 from app.services.dense_retriever import DenseRetriever
-from app.services.embedder import embeddings
+from app.services.embedder import get_embeddings
 from app.services.sparse_retriever import SparseRetriever
 
 
 class CompareService:
     def compare(self, question: str, top_k: int = 5) -> dict:
-        dense = DenseRetriever(embeddings, default_k=top_k)
+        dense = DenseRetriever(get_embeddings(), default_k=top_k)
         dense_docs = dense.retrieve(question, k=top_k)
 
         dense_results = [

@@ -14,7 +14,7 @@ from app.services.document_fusion import (
     fuse_documents,
     merge_hit_lists,
 )
-from app.services.embedder import embeddings
+from app.services.embedder import get_embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs
@@ -340,7 +340,7 @@ class QueryService:
         *,
         document_id: str,
     ) -> list[tuple[Document, float]]:
-        dense = DenseRetriever(embeddings, default_k=settings.RETRIEVAL_TOP_K)
+        dense = DenseRetriever(get_embeddings(), default_k=settings.RETRIEVAL_TOP_K)
         hits = dense.retrieve_with_scores(
             query,
             k=settings.RETRIEVAL_TOP_K,

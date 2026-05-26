@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 
 from app.db.document_store import save_documents
 from app.db.vector_store import upsert_documents
-from app.services.embedder import embeddings
+from app.services.embedder import get_embeddings
 from app.utils.chunker import text_splitter
 from app.utils.ids import new_document_id, stamp_document_chunks
 
@@ -31,7 +31,7 @@ class IngestService:
         source = file.filename or "upload.pdf"
         stamp_document_chunks(all_splits, document_id=document_id, source=source)
 
-        upsert_documents(embeddings, all_splits)
+        upsert_documents(get_embeddings(), all_splits)
         saved = save_documents(all_splits)
 
         return {
