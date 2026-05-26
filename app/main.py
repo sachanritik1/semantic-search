@@ -40,11 +40,15 @@ async def _warm_reranker() -> None:
     # call. Doing it here keeps the latency off the request path so the first
     # /ask doesn't appear to "hang".
     try:
-        from app.services.re_ranker import _get_cross_encoder
+        from app.services.re_ranker import preload_reranker
 
-        await asyncio.to_thread(_get_cross_encoder)
+        await asyncio.to_thread(preload_reranker)
     except Exception:
         logger.exception("Failed to pre-warm cross-encoder; first /ask will be slow")
+
+
+async def preload_models() -> None:
+    await _warm_reranker()
 
 
 @asynccontextmanager
@@ -57,7 +61,7 @@ async def lifespan(app: FastAPI):
         )
     await asyncio.to_thread(check_db_connection)
     await asyncio.to_thread(ensure_payload_indexes)
-    await _warm_reranker()
+    asyncio.create_task(preload_models())
     try:
         yield
     finally:

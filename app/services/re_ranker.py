@@ -127,6 +127,10 @@ def _get_cross_encoder() -> CrossEncoder:
     return _model
 
 
+def preload_reranker() -> None:
+    _get_cross_encoder()
+
+
 def _normalize_scores(raw_logits: list[float]) -> list[float]:
     """Map cross-encoder logits to 0–10 relative to this candidate batch."""
     if not raw_logits:
