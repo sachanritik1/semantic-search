@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "openai/gpt-oss-120b:free"
 
+    # LlamaParse (Llama Cloud)
+    LLAMAPARSE_API_KEY: str = ""
+    LLAMA_CLOUD_API_KEY: str = ""
+
     # Langfuse (tracing toggled via LANGFUSE_TRACING_ENABLED env var — Langfuse SDK)
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
