@@ -1,100 +1,41 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.documents import Document
-from qdrant_client.http import models
-from qdrant_client.http.exceptions import UnexpectedResponse
 
-from app.db.vector_store import (
-    DOCUMENT_ID_PAYLOAD_FIELD,
-    ensure_payload_indexes,
-    upsert_documents,
-)
+from app.db.weaviate_store import ensure_collection, upsert_documents
 
 
-def test_ensure_payload_indexes_skips_when_collection_missing():
-    client = MagicMock()
-    client.collection_exists.return_value = False
-
-    ensure_payload_indexes(client)
-
-    client.collection_exists.assert_called_once()
-    client.create_payload_index.assert_not_called()
+def test_upsert_documents_skips_empty_list():
+    with patch("app.db.weaviate_store.get_weaviate_client") as mock_client:
+        upsert_documents([], [])
+    mock_client.assert_not_called()
 
 
-def test_ensure_payload_indexes_creates_document_id_index():
-    client = MagicMock()
-    client.collection_exists.return_value = True
-
-    ensure_payload_indexes(client)
-
-    client.create_payload_index.assert_called_once_with(
-        collection_name="semantic-search",
-        field_name=DOCUMENT_ID_PAYLOAD_FIELD,
-        field_schema=models.PayloadSchemaType.KEYWORD,
-    )
-
-
-def test_ensure_payload_indexes_ignores_existing_index():
-    client = MagicMock()
-    client.collection_exists.return_value = True
-    client.create_payload_index.side_effect = UnexpectedResponse(
-        status_code=409,
-        reason_phrase="Conflict",
-        content=b"already exists",
-        headers={},
-    )
-
-    ensure_payload_indexes(client)
-
-
-def test_ensure_payload_indexes_reraises_unexpected_errors():
-    client = MagicMock()
-    client.collection_exists.return_value = True
-    client.create_payload_index.side_effect = UnexpectedResponse(
-        status_code=400,
-        reason_phrase="Bad Request",
-        content=b"bad request",
-        headers={},
-    )
-
-    with pytest.raises(UnexpectedResponse):
-        ensure_payload_indexes(client)
-
-
-def test_upsert_documents_ensures_indexes_when_collection_exists():
-    embeddings = MagicMock()
+def test_upsert_documents_calls_weaviate_batch():
+    embeddings = [[0.1, 0.2]]
     documents = [
-        Document(page_content="chunk", metadata={"chunk_id": "chunk-1"}),
+        Document(page_content="chunk", metadata={"chunk_id": "chunk-1", "document_id": "doc-1"}),
     ]
-    client = MagicMock()
-    client.collection_exists.return_value = True
-    vector_store = MagicMock()
+
+    mock_batch = MagicMock()
+    mock_batch.__enter__ = MagicMock(return_value=mock_batch)
+    mock_batch.__exit__ = MagicMock(return_value=None)
+
+    mock_client = MagicMock()
+    mock_client.collections.exists.return_value = True
+    mock_client.batch.dynamic.return_value = mock_batch
+    mock_client.batch.failed_objects = []
 
     with (
-        patch("app.db.vector_store.get_qdrant_client", return_value=client),
-        patch("app.db.vector_store.ensure_payload_indexes") as ensure_indexes,
-        patch("app.db.vector_store.get_vector_store", return_value=vector_store),
+        patch("app.db.weaviate_store.get_weaviate_client", return_value=mock_client),
+        patch("app.db.weaviate_store.ensure_collection", return_value=mock_client),
     ):
         upsert_documents(embeddings, documents)
 
-    ensure_indexes.assert_called_once_with(client)
-    vector_store.add_documents.assert_called_once_with(documents, ids=["chunk-1"])
-
-
-def test_upsert_documents_ensures_indexes_after_collection_creation():
-    embeddings = MagicMock()
-    documents = [
-        Document(page_content="chunk", metadata={"chunk_id": "chunk-1"}),
-    ]
-    client = MagicMock()
-    client.collection_exists.return_value = False
-
-    with (
-        patch("app.db.vector_store.get_qdrant_client", return_value=client),
-        patch("app.db.vector_store.ensure_payload_indexes") as ensure_indexes,
-        patch("app.db.vector_store.QdrantVectorStore.from_documents"),
-    ):
-        upsert_documents(embeddings, documents)
-
-    ensure_indexes.assert_called_once_with(client)
+    mock_client.batch.dynamic.assert_called_once()
+    mock_batch.add_object.assert_called_once()
+    call_kwargs = mock_batch.add_object.call_args.kwargs
+    assert call_kwargs["properties"]["content"] == "chunk"
+    assert call_kwargs["properties"]["document_id"] == "doc-1"
+    assert call_kwargs["vector"] == [0.1, 0.2]
+    assert call_kwargs["collection"] == "DocumentChunk"

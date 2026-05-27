@@ -32,9 +32,6 @@ class Settings(BaseSettings):
     # Query enhancement (optional override; defaults to provider model)
     ENHANCER_MODEL: str | None = "openai/gpt-oss-20b:free"
 
-    # Reasoning
-    ENABLE_REASONING: bool = False
-
     # Database (PostgreSQL; run `alembic upgrade head` after `docker compose up -d`)
     DATABASE_URL: str = (
         "postgresql+psycopg://semantic:semantic@localhost:5432/semantic_search"
@@ -47,10 +44,10 @@ class Settings(BaseSettings):
     # Embeddings
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
-    # Vector store
-    QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_COLLECTION_NAME: str = "semantic-search"
-    QDRANT_API_KEY: str = ""
+    # Weaviate vector store
+    WEAVIATE_URL: str = "localhost:8080"
+    WEAVIATE_GRPC_URL: str = "localhost:50051"
+    WEAVIATE_COLLECTION_NAME: str = "DocumentChunk"
 
     # Multi-tenant (single-tenant default)
     DEFAULT_TENANT_ID: str = "default"
@@ -59,11 +56,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
 
     # Hybrid retrieval / ask pipeline
-    DENSE_WEIGHT: float = 0.5
-    SPARSE_WEIGHT: float = 0.5
+    HYBRID_ALPHA: float = 0.5
     RETRIEVAL_TOP_K: int = 10
-    FUSION_MIN_SCORE: float = 0.25
-    FUSION_MIN_DOCS: int = 10
     RERANK_MODEL_NAME: str = "ibm-research/re2g-reranker-nq"
     RERANK_TOP_K: int = 8
     RERANK_MIN_RELEVANCE: float = 4.0

@@ -8,7 +8,7 @@ from langfuse import Langfuse, get_client
 
 from app.config import settings
 from app.db.document_store import check_db_connection
-from app.db.vector_store import ensure_payload_indexes
+from app.db.weaviate_store import ensure_collection
 from app.routers import (
     compare,
     enhance,
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
             host=settings.LANGFUSE_HOST,
         )
     await asyncio.to_thread(check_db_connection)
-    await asyncio.to_thread(ensure_payload_indexes)
+    await asyncio.to_thread(ensure_collection)
     try:
         yield
     finally:

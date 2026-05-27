@@ -1,43 +1,41 @@
 from app.db.document_store import list_chunks
-from app.services.dense_retriever import DenseRetriever
+from app.db.weaviate_store import bm25_search, dense_search
 from app.services.embedder import get_embeddings
-from app.services.sparse_retriever import SparseRetriever
 
 
 class CompareService:
     def compare(self, question: str, top_k: int = 5) -> dict:
-        dense = DenseRetriever(get_embeddings(), default_k=top_k)
-        dense_docs = dense.retrieve(question, k=top_k)
+        embeddings = get_embeddings()
+        query_embedding = embeddings.embed_query(question)
 
+        dense_results_raw = dense_search(query_embedding, limit=top_k)
         dense_results = [
             {
                 "index": i,
                 "content": doc.page_content,
                 "metadata": getattr(doc, "metadata", None) or {},
             }
-            for i, doc in enumerate(dense_docs)
+            for i, doc in enumerate([d for d, _ in dense_results_raw])
         ]
 
-        chunks = list_chunks()
-        texts = [c.content for c in chunks]
-        if not texts:
+        chunks = list(list_chunks())
+        if not chunks:
             return {"dense": dense_results, "sparse": []}
 
-        sparse = SparseRetriever()
-        sparse.build_index(texts)
-        sparse_res = sparse.query(question, top_k=top_k)
+        sparse_results_raw = bm25_search(question, limit=top_k)
+
         sparse_results = [
             {
-                "index": idx,
+                "index": i,
                 "score": score,
-                "content": text,
-                "document_id": chunks[idx].document_id,
-                "chunk_id": chunks[idx].chunk_id,
-                "source": chunks[idx].source,
-                "chunk_index": chunks[idx].chunk_index,
-                "metadata": chunks[idx].meta,
+                "content": doc.page_content,
+                "document_id": doc.metadata.get("document_id", ""),
+                "chunk_id": doc.metadata.get("chunk_id", ""),
+                "source": doc.metadata.get("source", ""),
+                "chunk_index": doc.metadata.get("chunk_index", 0),
+                "metadata": doc.metadata or {},
             }
-            for idx, score, text in sparse_res
+            for i, (doc, score) in enumerate(sparse_results_raw)
         ]
 
         return {"dense": dense_results, "sparse": sparse_results}

@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,8 +12,8 @@ from app.services.semantic_cache import SemanticAskCache
 @pytest.mark.asyncio
 async def test_ask_uses_only_reranked_docs_on_success():
     fused = [
-        Document(page_content="a", metadata={"chunk_id": "1", "fusion_score": 0.9}),
-        Document(page_content="b", metadata={"chunk_id": "2", "fusion_score": 0.5}),
+        Document(page_content="a", metadata={"chunk_id": "1"}),
+        Document(page_content="b", metadata={"chunk_id": "2"}),
     ]
     selected = [
         Document(
@@ -34,18 +35,9 @@ async def test_ask_uses_only_reranked_docs_on_success():
             "app.services.query_service.list_chunks_for_document",
             return_value=[MagicMock()],
         ),
-        patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(
-            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
-        ),
-        patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
-            "app.services.query_service.merge_hit_lists",
-            side_effect=lambda hits: hits,
-        ),
-        patch(
-            "app.services.query_service.fuse_documents",
-            return_value=fused,
+            "app.services.query_service.hybrid_search",
+            return_value=[(fused[0], 0.9), (fused[1], 0.5)],
         ),
         patch(
             "app.services.query_service.re_rank_docs",
@@ -90,18 +82,9 @@ async def test_ask_uses_all_fused_on_rerank_failure():
             "app.services.query_service.list_chunks_for_document",
             return_value=[MagicMock()],
         ),
-        patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(
-            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
-        ),
-        patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
-            "app.services.query_service.merge_hit_lists",
-            side_effect=lambda hits: hits,
-        ),
-        patch(
-            "app.services.query_service.fuse_documents",
-            return_value=fused,
+            "app.services.query_service.hybrid_search",
+            return_value=[(fused[0], 0.9), (fused[1], 0.5)],
         ),
         patch(
             "app.services.query_service.re_rank_docs",
@@ -118,7 +101,7 @@ async def test_ask_uses_all_fused_on_rerank_failure():
 
 
 @pytest.mark.asyncio
-async def test_ask_passes_each_query_to_retrievers():
+async def test_ask_passes_each_query_to_hybrid_search():
     llm = MagicMock()
     llm.generate_text.return_value = MagicMock(content="answer")
 
@@ -127,32 +110,22 @@ async def test_ask_passes_each_query_to_retrievers():
 
     service = QueryService(llm_service=llm, query_enhancer=enhancer)
     document_id = "doc-123"
-    sparse_bundle = (MagicMock(), [])
+
+    chunks = [MagicMock() for _ in range(3)]
+    for i, c in enumerate(chunks):
+        c.content = f"content {i}"
+
+    fake_doc = Document(page_content="test", metadata={"chunk_id": "c1"})
 
     with (
-        patch.object(service, "_retrieve_dense", return_value=[]) as retrieve_dense,
-        patch.object(
-            service,
-            "_build_sparse_retriever",
-            return_value=sparse_bundle,
-        ) as build_sparse,
-        patch.object(
-            service,
-            "_retrieve_sparse_with_index",
-            return_value=[],
-        ) as retrieve_sparse,
         patch(
             "app.services.query_service.list_chunks_for_document",
-            return_value=[MagicMock()],
+            return_value=chunks,
         ),
         patch(
-            "app.services.query_service.merge_hit_lists",
-            side_effect=lambda hits: hits,
-        ),
-        patch(
-            "app.services.query_service.fuse_documents",
-            return_value=[],
-        ),
+            "app.services.query_service.hybrid_search",
+            return_value=[(fake_doc, 0.95)],
+        ) as mock_hybrid,
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -160,17 +133,9 @@ async def test_ask_passes_each_query_to_retrievers():
     ):
         await service.ask("question?", document_id=document_id)
 
-    build_sparse.assert_called_once_with(document_id)
-    assert retrieve_dense.call_count == 3
-    retrieve_dense.assert_any_call("q1", document_id=document_id)
-    retrieve_dense.assert_any_call("q2", document_id=document_id)
-    retrieve_dense.assert_any_call("q3", document_id=document_id)
-    assert retrieve_sparse.call_count == 3
-    retrieve_sparse.assert_any_call(
-        sparse_bundle,
-        "q1",
-        document_id=document_id,
-    )
+    assert mock_hybrid.call_count == 3
+    for call in mock_hybrid.call_args_list:
+        assert call.kwargs["document_id"] == document_id
 
 
 @pytest.mark.asyncio
@@ -188,8 +153,9 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
             "app.services.query_service.list_chunks_for_document",
             return_value=[],
         ),
-        patch.object(service, "_retrieve_dense") as retrieve_dense,
-        patch.object(service, "_build_sparse_retriever") as build_sparse,
+        patch(
+            "app.services.query_service.hybrid_search",
+        ) as mock_hybrid,
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -197,8 +163,7 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
     ):
         result = await service.ask("question?", document_id="missing-doc")
 
-    retrieve_dense.assert_not_called()
-    build_sparse.assert_not_called()
+    mock_hybrid.assert_not_called()
     build_ask_messages.assert_called_once_with(docs=[], question="question?")
     assert result["response"] == "no context answer"
     assert result["enhanced_questions"] == ["q1", "q2", "q3"]
@@ -246,11 +211,6 @@ async def test_ask_returns_cache_hit_on_repeat_question():
 @pytest.mark.skip(reason="DB-layer tests pending Postgres rewrite")
 @pytest.mark.asyncio
 async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
-    """If the SSE consumer stops iterating early (client disconnect), the LLM
-    call must still run to completion and the full response must be written to
-    the semantic cache. The next identical question should then be a cache hit.
-    """
-
     import asyncio
 
     llm = MagicMock()
@@ -287,8 +247,6 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
     ):
         gen = service.stream_ask("question?", document_id="doc-1")
         events: list[dict] = []
-        # Drain status/meta frames until the first token arrives, then
-        # disconnect mid-stream and verify the bg task still completes.
         meta_event: dict | None = None
         first_token: dict | None = None
         async for ev in gen:
@@ -300,11 +258,9 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
                 break
         await gen.aclose()
 
-        # Let the detached bg task complete (LLM finish + cache write).
         for _ in range(20):
             await asyncio.sleep(0)
 
-        # Cache must now contain the FULL response, not just the first chunk.
         replay: list[dict] = []
         async for ev in service.stream_ask("question?", document_id="doc-1"):
             replay.append(ev)
@@ -319,10 +275,6 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
 
 @pytest.mark.asyncio
 async def test_stream_ask_emits_stage_status_events_in_order():
-    """The streaming endpoint should announce each pipeline stage before it
-    starts so the UI can render a progress indicator that updates in real time.
-    """
-
     import asyncio
 
     llm = MagicMock()
@@ -347,22 +299,9 @@ async def test_stream_ask_emits_stage_status_events_in_order():
             "app.services.query_service.list_chunks_for_document",
             return_value=[MagicMock()],
         ),
-        patch.object(service, "_retrieve_dense", return_value=[]),
-        patch.object(
-            service, "_build_sparse_retriever", return_value=(MagicMock(), [])
-        ),
-        patch.object(service, "_retrieve_sparse_with_index", return_value=[]),
         patch(
-            "app.services.query_service.merge_hit_lists",
-            side_effect=lambda hits: hits,
-        ),
-        patch(
-            "app.services.query_service.fuse_documents",
-            return_value=fused,
-        ),
-        patch(
-            "app.services.query_service.filter_fused_documents",
-            return_value=fused,
+            "app.services.query_service.hybrid_search",
+            return_value=[(fused[0], 0.9)],
         ),
         patch(
             "app.services.query_service.re_rank_docs",
@@ -389,16 +328,12 @@ async def test_stream_ask_emits_stage_status_events_in_order():
     assert event_types.index("meta") < event_types.index("token")
     assert "done" in event_types
 
-    # Let any detached background completion task finish before exiting so the
-    # tests don't leak warnings about pending tasks.
     for _ in range(5):
         await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
 async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
-    """If retrieval returns nothing, we should not announce a reranking stage."""
-
     import asyncio
 
     llm = MagicMock()
@@ -436,11 +371,6 @@ async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
 
 @pytest.mark.asyncio
 async def test_stream_generate_async_yields_chunks_incrementally():
-    """Regression: the default async wrapper must NOT await the executor task
-    (which would block until the entire sync stream completes before yielding).
-    First chunk must arrive before subsequent chunks are produced.
-    """
-
     import time
 
     from app.llm.base import BaseLLM, LLMResponse
@@ -449,7 +379,7 @@ async def test_stream_generate_async_yields_chunks_incrementally():
         def __init__(self) -> None:
             self.produced_at: list[float] = []
 
-        def generate(  # pragma: no cover
+        def generate(
             self,
             prompt,
             *,
@@ -481,9 +411,6 @@ async def test_stream_generate_async_yields_chunks_incrementally():
     async for chunk in llm.stream_generate_async("prompt"):
         received_at.append(time.monotonic())
 
-    # If the wrapper awaits the executor, all received_at timestamps come
-    # tightly together AFTER all produced_at timestamps. With true streaming,
-    # each received_at[i] should be near produced_at[i].
     assert len(received_at) == 3
     for produced, received in zip(llm.produced_at, received_at):
         assert received - produced < 0.04, (

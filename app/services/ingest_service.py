@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 from typing import Any, TypedDict, cast
@@ -8,11 +9,13 @@ from langfuse import get_client
 from langfuse import observe as langfuse_observe  # type: ignore[reportUnknownVariableType]
 
 from app.db.document_store import save_documents
-from app.db.vector_store import upsert_documents
+from app.db.weaviate_store import ensure_collection, upsert_documents
 from app.services.document_processor import DocumentProcessor
 from app.services.embedder import get_embeddings
 from app.utils.chunker import text_splitter
 from app.utils.ids import new_document_id, stamp_document_chunks
+
+logger = logging.getLogger(__name__)
 
 _CHUNK_PREVIEW_LEN = 200
 
@@ -38,7 +41,6 @@ class IngestService:
             }
         )
 
-        # -- parse & clean -------------------------------------------------
         with get_client().start_as_current_observation(
             name="parse_and_clean",
             input={"filename": file.filename},
@@ -63,7 +65,6 @@ class IngestService:
                 }
             )
 
-        # -- chunk ---------------------------------------------------------
         with get_client().start_as_current_observation(
             name="chunk",
             input={"raw_length_chars": len(cleaned_text)},
@@ -74,7 +75,7 @@ class IngestService:
 
             chunks_preview: list[dict[str, object]] = []
             for i, chunk in enumerate(all_splits):
-                meta = cast(dict[str, Any], dict(chunk.metadata)) if chunk.metadata else {}  # type: ignore[reportUnknownArgumentType]
+                meta = cast(dict[str, Any], dict(chunk.metadata)) if chunk.metadata else {}
                 chunks_preview.append(
                     {
                         "chunk_index": i,
@@ -93,15 +94,20 @@ class IngestService:
                 }
             )
 
-        # -- embed ---------------------------------------------------------
         with get_client().start_as_current_observation(
             name="embed_and_upsert",
             input={"chunk_count": len(all_splits)},
         ) as span:
-            upsert_documents(get_embeddings(), all_splits)
-            span.update(output={"vector_store": "qdrant", "embedded_count": len(all_splits)})
+            embedder = get_embeddings()
+            embeddings = embedder.embed_documents(
+                [c.page_content for c in all_splits]
+            )
 
-        # -- save ----------------------------------------------------------
+            ensure_collection()
+            upsert_documents(embeddings, all_splits)
+
+            span.update(output={"vector_store": "weaviate", "embedded_count": len(all_splits)})
+
         with get_client().start_as_current_observation(
             name="save_metadata",
             input={"chunk_count": len(all_splits)},

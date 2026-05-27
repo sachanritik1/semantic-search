@@ -8,26 +8,17 @@ from langfuse import get_client, observe
 
 from app.config import settings
 from app.db.document_store import chunk_to_document, list_chunks_for_document
-from app.services.dense_retriever import DenseRetriever
-from app.services.document_fusion import (
-    filter_fused_documents,
-    fuse_documents,
-    merge_hit_lists,
-)
+from app.db.weaviate_store import hybrid_search
 from app.services.embedder import get_embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs
 from app.services.semantic_cache import SemanticAskCache
-from app.services.sparse_retriever import SparseRetriever
 from app.utils.prompt_cache import cache_key
 from app.utils.prompts import build_ask_messages
 
 logger = logging.getLogger(__name__)
 
-# Background tasks that must outlive a cancelled SSE generator so the LLM
-# call still completes and its result is persisted to the semantic cache.
-# We hold strong references here to prevent garbage collection.
 _pending_completions: set[asyncio.Task] = set()
 
 
@@ -50,6 +41,7 @@ class QueryService:
         self.llm_service = llm_service
         self.query_enhancer = query_enhancer
         self.semantic_cache = semantic_cache
+        self._embeddings = get_embeddings()
 
     def _cache_lookup(self, question: str, document_id: str) -> dict | None:
         if not self.semantic_cache:
@@ -79,35 +71,23 @@ class QueryService:
             )
             return []
 
-        all_dense: list[tuple[Document, float]] = []
-        all_sparse: list[tuple[Document, float]] = []
-        sparse = self._build_sparse_retriever(document_id)
+        all_hits: dict[str, tuple[Document, float]] = {}
 
         for q in queries:
-            all_dense.extend(self._retrieve_dense(q, document_id=document_id))
-            if sparse is not None:
-                all_sparse.extend(
-                    self._retrieve_sparse_with_index(
-                        sparse,
-                        q,
-                        document_id=document_id,
-                    )
-                )
+            query_embedding = self._embeddings.embed_query(q)
+            results = hybrid_search(
+                q,
+                query_embedding,
+                document_id=document_id,
+                limit=settings.RETRIEVAL_TOP_K,
+            )
+            for doc, score in results:
+                key = doc.metadata.get("chunk_id", doc.page_content)
+                if key not in all_hits or score > all_hits[key][1]:
+                    all_hits[key] = (doc, score)
 
-        dense_hits = merge_hit_lists(all_dense)
-        sparse_hits = merge_hit_lists(all_sparse)
-
-        fused = fuse_documents(
-            dense_hits,
-            sparse_hits,
-            dense_weight=settings.DENSE_WEIGHT,
-            sparse_weight=settings.SPARSE_WEIGHT,
-        )
-        return filter_fused_documents(
-            fused,
-            min_score=settings.FUSION_MIN_SCORE,
-            min_docs=settings.FUSION_MIN_DOCS,
-        )
+        fused = [doc for doc, _ in sorted(all_hits.values(), key=lambda x: x[1], reverse=True)]
+        return fused[:settings.RETRIEVAL_TOP_K]
 
     def _rerank(
         self,
@@ -217,9 +197,6 @@ class QueryService:
         get_client().update_current_span(
             input={"question": question, "document_id": document_id},
         )
-        # Cache lookup is fast but still touches Postgres + numpy; run off the
-        # event loop so the very first SSE write happens immediately and the
-        # client can render "preparing" while we look.
         cached = await asyncio.to_thread(
             self._cache_lookup,
             question,
@@ -237,8 +214,6 @@ class QueryService:
             yield {"event": "done", "data": {"cache_hit": True}}
             return
 
-        # Each stage runs in a worker thread, with a status event emitted
-        # before it starts so the UI can show what is happening right now.
         yield {"event": "status", "data": {"stage": "enhancing_query"}}
         queries, result_base = await asyncio.to_thread(self._enhance_queries, question)
 
@@ -267,9 +242,6 @@ class QueryService:
             cache_hit=False,
         )
 
-        # Detach LLM generation so it completes even if the SSE consumer
-        # disconnects mid-stream. The bg task writes the full response to the
-        # semantic cache; we forward chunks to the wire while connected.
         queue: asyncio.Queue = asyncio.Queue()
         _SENTINEL = object()
         full_text: list[str] = []
@@ -333,49 +305,3 @@ class QueryService:
         if self.semantic_cache:
             self.semantic_cache.store(question, document_id, result)
         return {**result, "cache_hit": False}
-
-    def _retrieve_dense(
-        self,
-        query: str,
-        *,
-        document_id: str,
-    ) -> list[tuple[Document, float]]:
-        dense = DenseRetriever(get_embeddings(), default_k=settings.RETRIEVAL_TOP_K)
-        hits = dense.retrieve_with_scores(
-            query,
-            k=settings.RETRIEVAL_TOP_K,
-            document_id=document_id,
-        )
-        logger.debug("Retrieved %d dense documents for query=%r", len(hits), query)
-        return hits
-
-    def _build_sparse_retriever(
-        self,
-        document_id: str,
-    ) -> tuple[SparseRetriever, list] | None:
-        chunks = list_chunks_for_document(document_id)
-        if not chunks:
-            return None
-
-        texts = [c.content for c in chunks]
-        sparse = SparseRetriever()
-        sparse.build_index(texts)
-        return sparse, chunks
-
-    def _retrieve_sparse_with_index(
-        self,
-        sparse_and_chunks: tuple[SparseRetriever, list],
-        query: str,
-        *,
-        document_id: str,
-    ) -> list[tuple[Document, float]]:
-        sparse, chunks = sparse_and_chunks
-        sparse_res = sparse.query(query, top_k=settings.RETRIEVAL_TOP_K)
-        hits = [(chunk_to_document(chunks[idx]), score) for idx, score, _ in sparse_res]
-        logger.debug(
-            "Retrieved %d sparse documents for document_id=%s query=%r",
-            len(hits),
-            document_id,
-            query,
-        )
-        return hits
