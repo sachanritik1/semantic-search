@@ -8,14 +8,15 @@ from langchain_core.documents import Document
 from app.config import settings
 
 _CHUNK_NAMESPACE = uuid.NAMESPACE_DNS
+_DOCUMENT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "semantic-search-document")
 
 
-def new_document_id() -> str:
-    return str(uuid.uuid4())
+def new_document_id(file_bytes: bytes) -> str:
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    return str(uuid.uuid5(_DOCUMENT_NAMESPACE, file_hash))
 
 
 def chunk_id_for(document_id: str, chunk_index: int) -> str:
-    """Deterministic UUID shared by SQLite and Qdrant."""
     name = f"{document_id}:{chunk_index}"
     return str(uuid.uuid5(_CHUNK_NAMESPACE, name))
 

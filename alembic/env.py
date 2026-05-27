@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.db.ask_cache_store import AskCacheRow  # noqa: F401
-from app.db.document_store import Base, DocumentChunk, _normalize_database_url  # noqa: F401
+from app.db.document_store import Base, _normalize_database_url  # noqa: F401
 
 config = context.config
 

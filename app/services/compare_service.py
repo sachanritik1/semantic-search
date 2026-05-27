@@ -1,5 +1,4 @@
-from app.db.document_store import list_chunks
-from app.db.weaviate_store import bm25_search, dense_search
+from app.db.weaviate_store import any_chunks_exist, bm25_search, dense_search
 from app.services.embedder import get_embeddings
 
 
@@ -18,8 +17,7 @@ class CompareService:
             for i, doc in enumerate([d for d, _ in dense_results_raw])
         ]
 
-        chunks = list(list_chunks())
-        if not chunks:
+        if not any_chunks_exist():
             return {"dense": dense_results, "sparse": []}
 
         sparse_results_raw = bm25_search(question, limit=top_k)

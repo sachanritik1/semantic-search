@@ -32,7 +32,7 @@ async def test_ask_uses_only_reranked_docs_on_success():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[MagicMock()],
         ),
         patch(
@@ -79,7 +79,7 @@ async def test_ask_uses_all_fused_on_rerank_failure():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[MagicMock()],
         ),
         patch(
@@ -119,7 +119,7 @@ async def test_ask_passes_each_query_to_hybrid_search():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=chunks,
         ),
         patch(
@@ -150,7 +150,7 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[],
         ),
         patch(
@@ -190,7 +190,7 @@ async def test_ask_returns_cache_hit_on_repeat_question():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[],
         ),
         patch(
@@ -237,7 +237,7 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[],
         ),
         patch(
@@ -296,7 +296,7 @@ async def test_stream_ask_emits_stage_status_events_in_order():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[MagicMock()],
         ),
         patch(
@@ -350,7 +350,7 @@ async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
 
     with (
         patch(
-            "app.services.query_service.list_chunks_for_document",
+            "app.services.query_service.document_has_chunks",
             return_value=[],
         ),
         patch(

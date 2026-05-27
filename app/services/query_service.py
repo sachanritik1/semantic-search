@@ -7,8 +7,7 @@ from langchain_core.documents import Document
 from langfuse import get_client, observe
 
 from app.config import settings
-from app.db.document_store import chunk_to_document, list_chunks_for_document
-from app.db.weaviate_store import hybrid_search
+from app.db.weaviate_store import document_has_chunks, hybrid_search
 from app.services.embedder import get_embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
@@ -64,7 +63,7 @@ class QueryService:
         queries: list[str],
         document_id: str,
     ) -> list[Document]:
-        if not list_chunks_for_document(document_id):
+        if not document_has_chunks(document_id):
             logger.info(
                 "No chunks found for document_id=%s; answering without retrieval context",
                 document_id,

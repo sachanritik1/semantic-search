@@ -148,6 +148,27 @@ def _scored_to_doc(obj) -> tuple[Document, float]:
     return doc, obj.metadata.score or 0.0
 
 
+def document_has_chunks(document_id: str) -> bool:
+    w = get_weaviate_client()
+    if not w.collections.exists(settings.WEAVIATE_COLLECTION_NAME):
+        return False
+    col = w.collections.use(settings.WEAVIATE_COLLECTION_NAME)
+    resp = col.query.fetch_objects(
+        filters=Filter.by_property(DOCUMENT_ID_PROPERTY).equal(document_id),
+        limit=1,
+    )
+    return len(resp.objects) > 0
+
+
+def any_chunks_exist() -> bool:
+    w = get_weaviate_client()
+    if not w.collections.exists(settings.WEAVIATE_COLLECTION_NAME):
+        return False
+    col = w.collections.use(settings.WEAVIATE_COLLECTION_NAME)
+    resp = col.query.fetch_objects(limit=1)
+    return len(resp.objects) > 0
+
+
 def hybrid_search(
     query_text: str,
     query_embedding: list[float],
@@ -227,8 +248,10 @@ def bm25_search(
 
 
 __all__ = [
+    "any_chunks_exist",
     "bm25_search",
     "dense_search",
+    "document_has_chunks",
     "ensure_collection",
     "get_weaviate_client",
     "hybrid_search",

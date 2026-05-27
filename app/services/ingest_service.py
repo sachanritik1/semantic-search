@@ -8,7 +8,6 @@ from langchain_core.documents import Document
 from langfuse import get_client
 from langfuse import observe as langfuse_observe  # type: ignore[reportUnknownVariableType]
 
-from app.db.document_store import save_documents
 from app.db.weaviate_store import ensure_collection, upsert_documents
 from app.services.document_processor import DocumentProcessor
 from app.services.embedder import get_embeddings
@@ -70,7 +69,7 @@ class IngestService:
             input={"raw_length_chars": len(cleaned_text)},
         ) as span:
             all_splits = text_splitter.split_documents(docs)
-            document_id = new_document_id()
+            document_id = new_document_id(file_bytes)
             stamp_document_chunks(all_splits, document_id=document_id, source=source)
 
             chunks_preview: list[dict[str, object]] = []
@@ -108,17 +107,10 @@ class IngestService:
 
             span.update(output={"vector_store": "weaviate", "embedded_count": len(all_splits)})
 
-        with get_client().start_as_current_observation(
-            name="save_metadata",
-            input={"chunk_count": len(all_splits)},
-        ) as span:
-            saved = save_documents(all_splits)
-            span.update(output={"saved_count": saved})
-
         result: IngestResponse = {
             "document_id": document_id,
             "chunks_total": len(all_splits),
-            "chunks_saved": saved,
+            "chunks_saved": len(all_splits),
         }
         get_client().update_current_span(
             output={

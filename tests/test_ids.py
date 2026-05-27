@@ -20,8 +20,15 @@ def test_content_hash_stable():
     assert content_hash(text) != content_hash("other")
 
 
+def test_new_document_id_is_deterministic_from_file_bytes():
+    same = b"same pdf content"
+    different = b"different pdf content"
+    assert new_document_id(same) == new_document_id(same)
+    assert new_document_id(same) != new_document_id(different)
+
+
 def test_stamp_document_chunks_sets_identity_fields():
-    document_id = new_document_id()
+    document_id = new_document_id(b"some pdf bytes")
     chunks = [
         Document(page_content="first", metadata={}),
         Document(page_content="second", metadata={}),
