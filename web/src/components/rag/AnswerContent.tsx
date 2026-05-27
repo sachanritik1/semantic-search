@@ -79,7 +79,7 @@ export function AnswerContent({
 		>
 			{embedded ? null : <p className="island-kicker m-0">Answer</p>}
 
-			<div className="prose prose-sm max-w-none text-(--sea-ink) prose-headings:text-(--sea-ink) prose-headings:font-semibold prose-strong:text-(--sea-ink) prose-p:my-2 prose-li:my-1 prose-ul:my-2 prose-ol:my-2">
+			<div className="prose prose-sm max-w-none text-(--sea-ink) prose-headings:text-(--sea-ink) prose-headings:font-semibold prose-strong:text-(--sea-ink) prose-p:my-2 prose-li:my-1 prose-ul:my-2 prose-ol:my-2 prose-code:text-(--sea-ink) prose-pre:text-(--sea-ink) prose-pre:bg-(--surface) prose-blockquote:text-(--sea-ink-soft)">
 				<ReactMarkdown
 					remarkPlugins={[remarkGfm]}
 					components={markdownComponents}
