@@ -1,7 +1,6 @@
 import json
 import logging
 import threading
-from typing import Optional
 from urllib.parse import urlparse
 
 import weaviate

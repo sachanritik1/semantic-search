@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from langchain_core.documents import Document
 from langfuse import get_client, observe
 
-from app.config import settings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs

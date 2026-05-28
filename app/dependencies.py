@@ -8,9 +8,7 @@ from langchain_core.documents import Document
 from app.config import settings
 from app.db.weaviate_store import ensure_collection, upsert_documents
 from app.llm.factory import get_llm
-from app.services.compare_llm_service import CompareLLMService
 from app.services.compare_pipeline import ComparePipeline, LLMScorer, Retriever
-from app.services.compare_service import CompareService
 from app.services.embedder import get_embeddings
 from app.services.ingest_service import IngestService
 from app.services.llm_service import LLMService
@@ -77,20 +75,6 @@ def get_query_service(
         retriever=HybridRetriever(),
         retrieval_top_k=settings.RETRIEVAL_TOP_K,
         rerank_top_k=settings.RERANK_TOP_K,
-    )
-
-
-def get_compare_service() -> CompareService:
-    return CompareService()
-
-
-def get_compare_llm_service(
-    compare_service: CompareService = Depends(get_compare_service),
-    llm_service: LLMService = Depends(get_llm_service),
-) -> CompareLLMService:
-    return CompareLLMService(
-        compare_service=compare_service,
-        llm_service=llm_service,
     )
 
 
