@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Weaviate vector store
-    WEAVIATE_URL: str = "localhost:8080"
-    WEAVIATE_GRPC_URL: str = "localhost:50051"
+    WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_GRPC_PORT: int = 50051
+    WEAVIATE_GRPC_ENABLED: bool = True
     WEAVIATE_COLLECTION_NAME: str = "DocumentChunk"
 
     # Multi-tenant (single-tenant default)

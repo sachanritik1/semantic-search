@@ -7,6 +7,9 @@ format:
 typecheck:
 	uv run mypy .
 
+migrate:
+	uv run alembic upgrade head
+
 test:
 	uv run pytest
 

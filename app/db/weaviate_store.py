@@ -1,5 +1,7 @@
 import json
+import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 import weaviate
 from langchain_core.documents import Document
@@ -9,24 +11,46 @@ from weaviate.client import WeaviateClient
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 DOCUMENT_ID_PROPERTY = "document_id"
 
 client: WeaviateClient | None = None
+_grpc_available: bool | None = None
+
+
+def _parse_weaviate_url() -> tuple[str, int, bool]:
+    parsed = urlparse(settings.WEAVIATE_URL)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 8080)
+    secure = parsed.scheme == "https"
+    return host, port, secure
 
 
 def get_weaviate_client() -> WeaviateClient:
-    global client
-    if client is None:
-        parts = settings.WEAVIATE_URL.split(":")
-        host = parts[0]
-        port = int(parts[1]) if len(parts) > 1 else 8080
-        grpc_parts = settings.WEAVIATE_GRPC_URL.split(":")
-        grpc_port = int(grpc_parts[1]) if len(grpc_parts) > 1 else 50051
-        client = weaviate.connect_to_local(
-            host=host,
-            port=port,
-            grpc_port=grpc_port,
-        )
+    global client, _grpc_available
+    if client is not None:
+        return client
+
+    host, port, secure = _parse_weaviate_url()
+
+    if settings.WEAVIATE_GRPC_ENABLED and _grpc_available is not False:
+        grpc_host = host
+        grpc_port = settings.WEAVIATE_GRPC_PORT
+        grpc_secure = secure
+    else:
+        grpc_host = ""
+        grpc_port = 50051
+        grpc_secure = False
+
+    client = weaviate.connect_to_custom(
+        http_host=host,
+        http_port=port,
+        http_secure=secure,
+        grpc_host=grpc_host,
+        grpc_port=grpc_port,
+        grpc_secure=grpc_secure,
+    )
     return client
 
 
@@ -98,6 +122,63 @@ def ensure_collection() -> WeaviateClient:
     return w
 
 
+def _doc_props(doc: Document) -> dict:
+    meta = dict(doc.metadata or {})
+    return {
+        "content": doc.page_content,
+        DOCUMENT_ID_PROPERTY: meta.get("document_id", ""),
+        "chunk_id": meta.get("chunk_id", ""),
+        "source": meta.get("source", ""),
+        "chunk_index": meta.get("chunk_index", 0),
+        "tenant_id": meta.get("tenant_id", settings.DEFAULT_TENANT_ID),
+        "meta": json.dumps(meta),
+    }
+
+
+def _upsert_batch(
+    w: WeaviateClient,
+    embeddings: list[list[float]],
+    documents: list[Document],
+) -> None:
+    global _grpc_available
+    try:
+        with w.batch.dynamic() as batch:
+            for i, doc in enumerate(documents):
+                chunk_id = (doc.metadata or {}).get("chunk_id", "")
+                batch.add_object(
+                    collection=settings.WEAVIATE_COLLECTION_NAME,
+                    properties=_doc_props(doc),
+                    vector=embeddings[i],
+                    uuid=chunk_id if chunk_id else None,
+                )
+        if len(w.batch.failed_objects) > 0:
+            raise RuntimeError(
+                f"Batch upsert: {len(w.batch.failed_objects)} failed objects"
+            )
+        _grpc_available = True
+    except Exception as exc:
+        if not _grpc_available:  # already on fallback
+            raise
+        logger.warning("gRPC batch failed (%s), falling back to REST inserts", exc)
+        _grpc_available = False
+        _upsert_rest(w, embeddings, documents)
+
+
+def _upsert_rest(
+    w: WeaviateClient,
+    embeddings: list[list[float]],
+    documents: list[Document],
+) -> None:
+    col = w.collections.use(settings.WEAVIATE_COLLECTION_NAME)
+    for i, doc in enumerate(documents):
+        chunk_id = (doc.metadata or {}).get("chunk_id", "")
+        col.data.insert(
+            properties=_doc_props(doc),
+            vector=embeddings[i],
+            uuid=chunk_id if chunk_id else None,
+        )
+
+
 def upsert_documents(
     embeddings: list[list[float]],
     documents: list[Document],
@@ -106,32 +187,11 @@ def upsert_documents(
         return
 
     w = ensure_collection()
-    col = w.collections.use(settings.WEAVIATE_COLLECTION_NAME)
 
-    with w.batch.dynamic() as batch:
-        for i, doc in enumerate(documents):
-            meta = dict(doc.metadata or {})
-            chunk_id = meta.get("chunk_id", "")
-            props = {
-                "content": doc.page_content,
-                DOCUMENT_ID_PROPERTY: meta.get("document_id", ""),
-                "chunk_id": chunk_id,
-                "source": meta.get("source", ""),
-                "chunk_index": meta.get("chunk_index", 0),
-                "tenant_id": meta.get("tenant_id", settings.DEFAULT_TENANT_ID),
-                "meta": json.dumps(meta),
-            }
-            batch.add_object(
-                collection=settings.WEAVIATE_COLLECTION_NAME,
-                properties=props,
-                vector=embeddings[i],
-                uuid=chunk_id if chunk_id else None,
-            )
-
-    if len(w.batch.failed_objects) > 0:
-        raise RuntimeError(
-            f"Failed to upsert {len(w.batch.failed_objects)} objects"
-        )
+    if settings.WEAVIATE_GRPC_ENABLED and _grpc_available is not False:
+        _upsert_batch(w, embeddings, documents)
+    else:
+        _upsert_rest(w, embeddings, documents)
 
 
 def _scored_to_doc(obj) -> tuple[Document, float]:
