@@ -30,24 +30,39 @@ class DocumentProcessor:
         return _export_structure(doc)
 
 
-class _LlamaParseParser(Protocol):
-    def load_data(self, file_path: str) -> list[Any]: ...
+class _ParseAdapter(Protocol):
+    def load_data(self, file_path: str) -> Any: ...
 
 
-def _get_llamaparse_parser() -> _LlamaParseParser:
+def _get_llamaparse_parser() -> _ParseAdapter:
     try:
-        module = importlib.import_module("llama_parse")
-        parser_cls = getattr(module, "LlamaParse")
+        module = importlib.import_module("llama_cloud")
+        client_cls = getattr(module, "LlamaCloud")
     except Exception as exc:  # pragma: no cover - import guard
         raise RuntimeError(
-            "LlamaParse is required. Install it with: pip install llama-parse"
+            "llama-cloud>=2.1 is required. Install it with: pip install llama-cloud>=2.1"
         ) from exc
 
     api_key = _get_llamaparse_api_key()
-    kwargs: dict[str, Any] = {"result_type": "markdown"}
+    kwargs: dict[str, Any] = {}
     if api_key:
         kwargs["api_key"] = api_key
-    return cast(_LlamaParseParser, parser_cls(**kwargs))
+    client = client_cls(**kwargs)
+    return cast(_ParseAdapter, _CloudParseAdapter(client))
+
+
+class _CloudParseAdapter:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def load_data(self, file_path: str) -> Any:
+        file = self._client.files.create(file=file_path, purpose="parse")
+        return self._client.parsing.parse(
+            file_id=file.id,
+            tier="agentic",
+            version="latest",
+            expand=["markdown"],
+        )
 
 
 def _get_llamaparse_api_key() -> str | None:
@@ -55,6 +70,9 @@ def _get_llamaparse_api_key() -> str | None:
 
 
 def _export_text(doc: Any) -> str:
+    markdown = _extract_markdown(doc)
+    if markdown:
+        return markdown
     if isinstance(doc, (list, tuple)):
         doc_items = cast(Sequence[Any], doc)
         parts = [_extract_text(item) for item in doc_items]
@@ -66,7 +84,31 @@ def _export_text(doc: Any) -> str:
     return str(doc)
 
 
+def _extract_markdown(doc: Any) -> str | None:
+    m = getattr(doc, "markdown", None)
+    if m is None:
+        return None
+    pages = getattr(m, "pages", None)
+    if isinstance(pages, (list, tuple)):
+        parts = [
+            getattr(p, "markdown", None)
+            for p in pages
+            if getattr(p, "markdown", None) and isinstance(getattr(p, "markdown"), str)
+        ]
+        if parts:
+            return "\n\n".join(parts)
+    raw = getattr(m, "markdown", None)
+    if isinstance(raw, str):
+        return raw
+    return None
+
+
 def _export_structure(doc: Any) -> dict[str, Any]:
+    markdown = _extract_markdown(doc)
+    if markdown is not None:
+        if hasattr(doc, "model_dump") and callable(doc.model_dump):
+            return cast(dict[str, Any], doc.model_dump())
+        return {"text": markdown, "source": "llama_cloud"}
     if isinstance(doc, (list, tuple)):
         doc_items = cast(Sequence[Any], doc)
         items: list[dict[str, Any]] = []
