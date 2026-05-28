@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.utils.sse import SSE_PING_FRAME, format_sse_event, with_heartbeats
+from app.infrastructure.utils.sse import SSE_PING_FRAME, format_sse_event, with_heartbeats
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,9 @@
 import logging
 from unittest.mock import MagicMock
 
-from app.llm.base import LLMResponse
-from app.llm.decorators import CostTrackingLLM
-from app.utils.llm_usage import annotate_cost, log_llm_usage
+from app.adapters.llm.base import LLMResponse
+from app.adapters.llm.decorators import CostTrackingLLM
+from app.infrastructure.utils.llm_usage import annotate_cost, log_llm_usage
 
 
 def test_annotate_cost_adds_cost_to_usage():

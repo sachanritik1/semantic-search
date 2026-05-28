@@ -1,8 +1,8 @@
 # tests/test_chunker.py
 
 import pytest
-from app.utils.chunker import sliding_window_chunk
-from app.utils.tokenizer import tokenize, detokenize
+from app.infrastructure.utils.chunker import sliding_window_chunk
+from app.infrastructure.utils.tokenizer import tokenize, detokenize
 
 
 def test_sliding_window_overlap():

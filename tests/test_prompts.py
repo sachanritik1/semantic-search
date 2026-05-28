@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from app.utils.prompts import (
+from app.infrastructure.utils.prompts import (
     ASK_SYSTEM_PREFIX,
     _citation_marker,
     _format_page_display,

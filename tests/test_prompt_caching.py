@@ -2,10 +2,10 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.llm.gemini_llm import GeminiLLM
-from app.llm.openai_llm import OpenaiLLM
-from app.llm.openrouter_llm import OpenRouterLLM, _build_messages
-from app.utils.prompt_cache import cache_key
+from app.adapters.llm.gemini import GeminiLLM
+from app.adapters.llm.openai import OpenaiLLM
+from app.adapters.llm.openrouter import OpenRouterLLM, _build_messages
+from app.infrastructure.utils.prompt_cache import cache_key
 
 
 def test_cache_key_includes_version():

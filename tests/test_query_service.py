@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from app.services.query_service import QueryService
-from app.services.re_ranker import RerankResult
-from app.services.semantic_cache import SemanticAskCache
+from app.pipelines.query import QueryService
+from app.adapters.reranker import RerankResult
+from app.domain.semantic_cache import SemanticAskCache
 
 
 def _make_mock_retriever(return_value=None):
@@ -357,7 +357,7 @@ async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
 async def test_stream_generate_async_yields_chunks_incrementally():
     import time
 
-    from app.llm.base import BaseLLM, LLMResponse
+    from app.adapters.llm.base import BaseLLM, LLMResponse
 
     class _SlowSyncLLM(BaseLLM):
         def __init__(self) -> None:

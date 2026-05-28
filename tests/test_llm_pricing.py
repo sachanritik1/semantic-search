@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.utils.llm_pricing import (
+from app.infrastructure.utils.llm_pricing import (
     _lookup_rates,
     _normalize_usage,
     estimate_cost,

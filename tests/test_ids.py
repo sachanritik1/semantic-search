@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from app.utils.ids import (
+from app.infrastructure.utils.ids import (
     chunk_id_for,
     content_hash,
     new_document_id,

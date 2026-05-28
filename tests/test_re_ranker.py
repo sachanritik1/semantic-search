@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
-from app.services.re_ranker import (
+from app.adapters.reranker import (
     RerankResult,
     _apply_ranking,
     _docs_to_trace_list,

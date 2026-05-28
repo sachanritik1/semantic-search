@@ -6,16 +6,16 @@ from fastapi import Depends
 from langchain_core.documents import Document
 
 from app.config import settings
-from app.db.weaviate_store import ensure_collection, upsert_documents
-from app.llm.factory import get_llm
-from app.services.compare_pipeline import ComparePipeline, LLMScorer, Retriever
-from app.services.embedder import get_embeddings
-from app.services.ingest_service import IngestService
-from app.services.llm_service import LLMService
-from app.services.query_enhancer import QueryEnhancer
-from app.services.query_service import QueryService
-from app.services.retrieval import HybridRetriever
-from app.services.semantic_cache import SemanticAskCache
+from app.adapters.vector_store import ensure_collection, upsert_documents
+from app.adapters.llm.factory import get_llm
+from app.pipelines.compare import ComparePipeline, LLMScorer, Retriever
+from app.adapters.embedder import get_embeddings
+from app.pipelines.ingest import IngestService
+from app.domain.llm_service import LLMService
+from app.domain.query_enhancer import QueryEnhancer
+from app.pipelines.query import QueryService
+from app.domain.retrieval import HybridRetriever
+from app.domain.semantic_cache import SemanticAskCache
 
 _semantic_cache: SemanticAskCache | None = None
 

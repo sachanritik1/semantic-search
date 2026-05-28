@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
-from app.db.weaviate_store import upsert_documents
+from app.adapters.vector_store import upsert_documents
 
 
 def test_upsert_documents_skips_empty_list():

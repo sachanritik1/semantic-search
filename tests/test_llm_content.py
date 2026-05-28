@@ -1,4 +1,4 @@
-from app.utils.llm_content import (
+from app.infrastructure.utils.llm_content import (
     extract_rerank_payload,
     normalize_llm_content,
     try_parse_json,

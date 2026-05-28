@@ -7,9 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from langfuse import Langfuse, get_client
 
 from app.config import settings
-from app.db.document_store import check_db_connection
-from app.db.weaviate_store import ensure_collection
-from app.routers import (
+from app.infrastructure.db.document_store import check_db_connection
+from app.adapters.vector_store import ensure_collection
+from app.api.routers import (
     compare,
     enhance,
     health,
@@ -20,7 +20,7 @@ from app.routers import (
     self_consistency,
     tokens,
 )
-from app.utils.huggingface import configure_hf_hub
+from app.infrastructure.utils.huggingface import configure_hf_hub
 
 configure_hf_hub()
 

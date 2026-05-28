@@ -1,7 +1,7 @@
 import json
 
-from app.llm.base import LLMResponse
-from app.services.query_enhancer import QueryEnhancer, _parse_queries
+from app.adapters.llm.base import LLMResponse
+from app.domain.query_enhancer import QueryEnhancer, _parse_queries
 
 
 class DummyLLMService:

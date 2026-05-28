@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from app.llm.openrouter_llm import OpenRouterLLM
+from app.adapters.llm.openrouter import OpenRouterLLM
 
 
 def _make_llm() -> OpenRouterLLM:
