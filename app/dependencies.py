@@ -1,19 +1,31 @@
 # app/dependencies.py
 
+from typing import Any
+
 from fastapi import Depends
+from langchain_core.documents import Document
 
 from app.config import settings
+from app.db.weaviate_store import ensure_collection, upsert_documents
 from app.llm.factory import get_llm
 from app.services.compare_llm_service import CompareLLMService
 from app.services.compare_service import CompareService
+from app.services.embedder import get_embeddings
 from app.services.ingest_service import IngestService
 from app.services.llm_service import LLMService
-from app.services.embedder import get_embeddings
 from app.services.query_enhancer import QueryEnhancer
 from app.services.query_service import QueryService
 from app.services.semantic_cache import SemanticAskCache
 
 _semantic_cache: SemanticAskCache | None = None
+
+
+class WeaviateVectorStore:
+    def ensure_collection(self) -> Any:
+        return ensure_collection()
+
+    def upsert(self, embeddings: list[list[float]], documents: list[Document]) -> None:
+        return upsert_documents(embeddings, documents)
 
 
 def _get_semantic_cache() -> SemanticAskCache | None:
@@ -46,7 +58,10 @@ def get_query_enhancer(
 
 
 def get_ingest_service() -> IngestService:
-    return IngestService()
+    return IngestService(
+        embedder=get_embeddings(),
+        vector_store=WeaviateVectorStore(),
+    )
 
 
 def get_query_service(
