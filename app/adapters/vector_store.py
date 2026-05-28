@@ -22,7 +22,9 @@ class VectorStore:
         self,
         url: str = "http://localhost:8080",
         api_key: str | None = None,
+        grpc_host: str = "",
         grpc_port: int = 50051,
+        grpc_secure: bool | None = None,
         grpc_enabled: bool = True,
         collection_name: str = "DocumentChunk",
         default_tenant_id: str = "default",
@@ -30,7 +32,9 @@ class VectorStore:
     ) -> None:
         self._url = url
         self._api_key = api_key
+        self._grpc_host = grpc_host
         self._grpc_port = grpc_port
+        self._grpc_secure = grpc_secure
         self._grpc_enabled = grpc_enabled
         self._collection_name = collection_name
         self._default_tenant_id = default_tenant_id
@@ -54,22 +58,16 @@ class VectorStore:
 
             host, port, secure = self._parse_url()
 
-            if self._grpc_enabled and self._grpc_available is not False:
-                grpc_host = host
-                grpc_port = self._grpc_port
-                grpc_secure = secure
-            else:
-                grpc_host = ""
-                grpc_port = 50051
-                grpc_secure = False
+            grpc_host = self._grpc_host or host
 
             kwargs: dict = {
                 "http_host": host,
                 "http_port": port,
                 "http_secure": secure,
                 "grpc_host": grpc_host,
-                "grpc_port": grpc_port,
-                "grpc_secure": grpc_secure,
+                "grpc_port": self._grpc_port,
+                "grpc_secure": secure if self._grpc_secure is None else self._grpc_secure,
+                "skip_init_checks": True,
             }
             if self._api_key:
                 kwargs["auth_credentials"] = AuthApiKey(self._api_key)
@@ -336,7 +334,9 @@ def _default_vector_store() -> VectorStore:
         _default_store = VectorStore(
             url=settings.WEAVIATE_URL,
             api_key=settings.WEAVIATE_API_KEY or None,
+            grpc_host=settings.WEAVIATE_GRPC_HOST,
             grpc_port=settings.WEAVIATE_GRPC_PORT,
+            grpc_secure=settings.WEAVIATE_GRPC_SECURE,
             grpc_enabled=settings.WEAVIATE_GRPC_ENABLED,
             collection_name=settings.WEAVIATE_COLLECTION_NAME,
             default_tenant_id=settings.DEFAULT_TENANT_ID,

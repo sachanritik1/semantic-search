@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "openai/gpt-oss-120b:free"
+    OPENROUTER_MODEL: str = "openai/gpt-oss-120b"
 
     # LlamaParse (Llama Cloud)
     LLAMAPARSE_API_KEY: str = ""
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
 
     # Query enhancement (optional override; defaults to provider model)
-    ENHANCER_MODEL: str | None = "openai/gpt-oss-20b:free"
+    ENHANCER_MODEL: str | None = "openai/gpt-oss-20b"
 
     # Database (PostgreSQL; run `alembic upgrade head` after `docker compose up -d`)
     DATABASE_URL: str = (
@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     # Weaviate vector store
     WEAVIATE_URL: str = "http://localhost:8080"
     WEAVIATE_API_KEY: str = ""
+    WEAVIATE_GRPC_HOST: str = ""
     WEAVIATE_GRPC_PORT: int = 50051
+    WEAVIATE_GRPC_SECURE: bool | None = None
     WEAVIATE_GRPC_ENABLED: bool = True
     WEAVIATE_COLLECTION_NAME: str = "DocumentChunk"
 
