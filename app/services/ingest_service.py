@@ -1,16 +1,14 @@
 import logging
 import os
 import tempfile
-from typing import Any, TypedDict, cast
+from typing import Any, Protocol, TypedDict, cast
 
-from fastapi import HTTPException, UploadFile
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langfuse import get_client
 from langfuse import observe as langfuse_observe  # type: ignore[reportUnknownVariableType]
 
-from app.db.weaviate_store import ensure_collection, upsert_documents
 from app.services.document_processor import DocumentProcessor
-from app.services.embedder import get_embeddings
 from app.utils.chunker import text_splitter
 from app.utils.ids import new_document_id, stamp_document_chunks
 
@@ -25,24 +23,28 @@ class IngestResponse(TypedDict):
     chunks_saved: int
 
 
-class IngestService:
-    @langfuse_observe(name="ingest.pdf", capture_input=False)
-    async def ingest_pdf(self, file: UploadFile) -> IngestResponse:
-        if not file.filename or not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+class VectorStore(Protocol):
+    def ensure_collection(self) -> Any: ...
+    def upsert(self, embeddings: list[list[float]], documents: list[Document]) -> None: ...
 
-        file_bytes = await file.read()
+
+class IngestService:
+    def __init__(self, embedder: Embeddings, vector_store: VectorStore) -> None:
+        self._embedder = embedder
+        self._vector_store = vector_store
+
+    @langfuse_observe(name="ingest.pdf", capture_input=False)
+    async def ingest_pdf(self, file_bytes: bytes, filename: str) -> IngestResponse:
         get_client().update_current_span(
             input={
-                "filename": file.filename,
-                "content_type": file.content_type,
+                "filename": filename,
                 "size_bytes": len(file_bytes),
             }
         )
 
         with get_client().start_as_current_observation(
             name="parse_and_clean",
-            input={"filename": file.filename},
+            input={"filename": filename},
         ) as span:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(file_bytes)
@@ -51,7 +53,7 @@ class IngestService:
             try:
                 processor = DocumentProcessor(tmp_path)
                 cleaned_text = processor.clean()
-                source = file.filename or "upload.pdf"
+                source = filename or "upload.pdf"
                 docs = [Document(page_content=cleaned_text, metadata={"source": source})]
             finally:
                 os.unlink(tmp_path)
@@ -97,13 +99,13 @@ class IngestService:
             name="embed_and_upsert",
             input={"chunk_count": len(all_splits)},
         ) as span:
-            embedder = get_embeddings()
+            embedder = self._embedder
             embeddings = embedder.embed_documents(
                 [c.page_content for c in all_splits]
             )
 
-            ensure_collection()
-            upsert_documents(embeddings, all_splits)
+            self._vector_store.ensure_collection()
+            self._vector_store.upsert(embeddings, all_splits)
 
             span.update(output={"vector_store": "weaviate", "embedded_count": len(all_splits)})
 
