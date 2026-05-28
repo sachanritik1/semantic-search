@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 import weaviate
 from langchain_core.documents import Document
+from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, Tokenization, VectorDistances
 from weaviate.classes.query import Filter, MetadataQuery
 from weaviate.client import WeaviateClient
@@ -20,6 +21,7 @@ class VectorStore:
     def __init__(
         self,
         url: str = "http://localhost:8080",
+        api_key: str | None = None,
         grpc_port: int = 50051,
         grpc_enabled: bool = True,
         collection_name: str = "DocumentChunk",
@@ -27,6 +29,7 @@ class VectorStore:
         hybrid_alpha: float = 0.5,
     ) -> None:
         self._url = url
+        self._api_key = api_key
         self._grpc_port = grpc_port
         self._grpc_enabled = grpc_enabled
         self._collection_name = collection_name
@@ -60,14 +63,18 @@ class VectorStore:
                 grpc_port = 50051
                 grpc_secure = False
 
-            self._client = weaviate.connect_to_custom(
-                http_host=host,
-                http_port=port,
-                http_secure=secure,
-                grpc_host=grpc_host,
-                grpc_port=grpc_port,
-                grpc_secure=grpc_secure,
-            )
+            kwargs: dict = {
+                "http_host": host,
+                "http_port": port,
+                "http_secure": secure,
+                "grpc_host": grpc_host,
+                "grpc_port": grpc_port,
+                "grpc_secure": grpc_secure,
+            }
+            if self._api_key:
+                kwargs["auth_credentials"] = AuthApiKey(self._api_key)
+
+            self._client = weaviate.connect_to_custom(**kwargs)
             return self._client
 
     @property
@@ -328,6 +335,7 @@ def _default_vector_store() -> VectorStore:
 
         _default_store = VectorStore(
             url=settings.WEAVIATE_URL,
+            api_key=settings.WEAVIATE_API_KEY or None,
             grpc_port=settings.WEAVIATE_GRPC_PORT,
             grpc_enabled=settings.WEAVIATE_GRPC_ENABLED,
             collection_name=settings.WEAVIATE_COLLECTION_NAME,

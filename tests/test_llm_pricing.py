@@ -131,7 +131,7 @@ def test_pricing_overrides_loaded_from_env(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("LLM_PRICING_JSON_PATH", str(override_path))
     # Force re-load by toggling the loaded flag.
-    from app.utils import llm_pricing
+    from app.infrastructure.utils import llm_pricing
 
     monkeypatch.setattr(llm_pricing, "_OVERRIDES_LOADED", False)
 

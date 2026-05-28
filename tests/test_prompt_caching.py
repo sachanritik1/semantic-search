@@ -9,14 +9,14 @@ from app.infrastructure.utils.prompt_cache import cache_key
 
 
 def test_cache_key_includes_version():
-    with patch("app.utils.prompt_cache.settings") as mock_settings:
+    with patch("app.infrastructure.utils.prompt_cache.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = True
         mock_settings.PROMPT_CACHE_VERSION = "v1"
         assert cache_key("ask") == "ask:v1"
 
 
 def test_cache_key_disabled_returns_none():
-    with patch("app.utils.prompt_cache.settings") as mock_settings:
+    with patch("app.infrastructure.utils.prompt_cache.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = False
         mock_settings.PROMPT_CACHE_VERSION = "v1"
         assert cache_key("ask") is None
@@ -32,7 +32,7 @@ def test_openai_adapter_forwards_system_role_and_cache_key():
     llm = OpenaiLLM(api_key="test", model="gpt-4o")
     llm.client = mock_client
 
-    with patch("app.llm.openai_llm.settings") as mock_settings:
+    with patch("app.adapters.llm.openai.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = True
         llm.generate(
             "user body",
@@ -58,7 +58,7 @@ def test_openai_adapter_omits_cache_key_when_disabled():
     llm = OpenaiLLM(api_key="test", model="gpt-4o")
     llm.client = mock_client
 
-    with patch("app.llm.openai_llm.settings") as mock_settings:
+    with patch("app.adapters.llm.openai.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = False
         llm.generate("user body", system_prompt="system rules", cache_key="ask:v1")
 
@@ -85,7 +85,7 @@ def test_gemini_adapter_forwards_system_instruction():
 
 
 def test_openrouter_build_messages_adds_cache_control_when_enabled():
-    with patch("app.llm.openrouter_llm.settings") as mock_settings:
+    with patch("app.adapters.llm.openrouter.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = True
         messages = _build_messages("user body", "system rules")
 
@@ -115,7 +115,7 @@ def test_openrouter_adapter_invokes_with_messages():
     llm = OpenRouterLLM(api_key="test", model="anthropic/claude-3.5-sonnet")
     llm.client = mock_client
 
-    with patch("app.llm.openrouter_llm.settings") as mock_settings:
+    with patch("app.adapters.llm.openrouter.settings") as mock_settings:
         mock_settings.PROMPT_CACHE_ENABLED = True
         llm.generate("user body", system_prompt="system rules")
 

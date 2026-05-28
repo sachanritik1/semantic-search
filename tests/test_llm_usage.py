@@ -31,7 +31,7 @@ def test_log_llm_usage_handles_provider_numeric_cost(caplog):
         "cost": 0.00123,
     }
 
-    with caplog.at_level(logging.INFO, logger="app.utils.llm_usage"):
+    with caplog.at_level(logging.INFO, logger="app.infrastructure.utils.llm_usage"):
         log_llm_usage(usage, context="generate", model="unknown/model")
 
     messages = [r.getMessage() for r in caplog.records]
@@ -54,7 +54,7 @@ def test_log_llm_usage_emits_cost(caplog):
     }
     annotate_cost(usage, model="gpt-4o")
 
-    with caplog.at_level(logging.INFO, logger="app.utils.llm_usage"):
+    with caplog.at_level(logging.INFO, logger="app.infrastructure.utils.llm_usage"):
         log_llm_usage(usage, context="generate", model="gpt-4o")
 
     messages = [r.getMessage() for r in caplog.records]

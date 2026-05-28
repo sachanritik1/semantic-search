@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     # Weaviate vector store
     WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_API_KEY: str = ""
     WEAVIATE_GRPC_PORT: int = 50051
     WEAVIATE_GRPC_ENABLED: bool = True
     WEAVIATE_COLLECTION_NAME: str = "DocumentChunk"

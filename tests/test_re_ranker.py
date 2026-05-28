@@ -65,8 +65,8 @@ def test_re_rank_docs_ranks_by_cross_encoder_logits():
     mock_reranker.score_pairs.return_value = [-5.0, 8.0]
 
     with (
-        patch("app.services.re_ranker._get_reranker", return_value=mock_reranker),
-        patch("app.services.re_ranker.settings.RERANK_MIN_RELEVANCE", 4.0),
+        patch("app.adapters.reranker._get_reranker", return_value=mock_reranker),
+        patch("app.adapters.reranker.settings.RERANK_MIN_RELEVANCE", 4.0),
     ):
         result = re_rank_docs("query", docs, top_n=2)
 
@@ -81,7 +81,7 @@ def test_re_rank_docs_returns_failed_on_predict_error():
     mock_reranker = MagicMock()
     mock_reranker.score_pairs.side_effect = RuntimeError("model error")
 
-    with patch("app.services.re_ranker._get_reranker", return_value=mock_reranker):
+    with patch("app.adapters.reranker._get_reranker", return_value=mock_reranker):
         result = re_rank_docs(
             "query",
             [Document(page_content="a")],

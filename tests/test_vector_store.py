@@ -2,11 +2,11 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
-from app.adapters.vector_store import upsert_documents
+from app.adapters.vector_store import VectorStore, upsert_documents
 
 
 def test_upsert_documents_skips_empty_list():
-    with patch("app.db.weaviate_store.get_weaviate_client") as mock_client:
+    with patch("app.adapters.vector_store.get_weaviate_client") as mock_client:
         upsert_documents([], [])
     mock_client.assert_not_called()
 
@@ -26,13 +26,13 @@ def test_upsert_documents_calls_weaviate_batch():
     mock_client.batch.dynamic.return_value = mock_batch
     mock_client.batch.failed_objects = []
 
-    with (
-        patch("app.db.weaviate_store.get_weaviate_client", return_value=mock_client),
-        patch("app.db.weaviate_store.ensure_collection", return_value=mock_client),
-        patch("app.db.weaviate_store.settings.WEAVIATE_GRPC_ENABLED", True),
-        patch("app.db.weaviate_store._grpc_available", True),
-    ):
-        upsert_documents(embeddings, documents)
+    store = VectorStore(
+        url="http://localhost:8080",
+        grpc_enabled=True,
+        collection_name="DocumentChunk",
+    )
+    store._client = mock_client
+    store.upsert(embeddings, documents)
 
     mock_client.batch.dynamic.assert_called_once()
     mock_batch.add_object.assert_called_once()
@@ -54,13 +54,13 @@ def test_upsert_documents_falls_back_to_rest_when_grpc_disabled():
     mock_client.collections.exists.return_value = True
     mock_client.collections.use.return_value = mock_col
 
-    with (
-        patch("app.db.weaviate_store.get_weaviate_client", return_value=mock_client),
-        patch("app.db.weaviate_store.ensure_collection", return_value=mock_client),
-        patch("app.db.weaviate_store.settings.WEAVIATE_GRPC_ENABLED", False),
-        patch("app.db.weaviate_store._grpc_available", False),
-    ):
-        upsert_documents(embeddings, documents)
+    store = VectorStore(
+        url="http://localhost:8080",
+        grpc_enabled=False,
+        collection_name="DocumentChunk",
+    )
+    store._client = mock_client
+    store.upsert(embeddings, documents)
 
     mock_client.batch.dynamic.assert_not_called()
     mock_col.data.insert.assert_called_once()

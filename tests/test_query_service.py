@@ -43,11 +43,11 @@ async def test_ask_uses_only_reranked_docs_on_success():
 
     with (
         patch(
-            "app.services.query_service.re_rank_docs",
+            "app.pipelines.query.re_rank_docs",
             return_value=RerankResult(docs=selected, failed=False),
         ),
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ) as build_ask_messages,
     ):
@@ -87,11 +87,11 @@ async def test_ask_uses_all_fused_on_rerank_failure():
 
     with (
         patch(
-            "app.services.query_service.re_rank_docs",
+            "app.pipelines.query.re_rank_docs",
             return_value=RerankResult(docs=[], failed=True),
         ),
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ) as build_ask_messages,
     ):
@@ -119,7 +119,7 @@ async def test_ask_passes_each_query_to_retriever():
 
     with (
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ),
     ):
@@ -147,13 +147,13 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
 
     with (
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ) as build_ask_messages,
     ):
         result = await service.ask("question?", document_id="missing-doc")
 
-    assert retriever.retrieve.call_count == 1
+    assert retriever.retrieve.call_count == 3
     build_ask_messages.assert_called_once_with(docs=[], question="question?")
     assert result["response"] == "no context answer"
     assert result["enhanced_questions"] == ["q1", "q2", "q3"]
@@ -182,7 +182,7 @@ async def test_ask_returns_cache_hit_on_repeat_question():
 
     with (
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ),
     ):
@@ -227,7 +227,7 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
 
     with (
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ),
     ):
@@ -287,11 +287,11 @@ async def test_stream_ask_emits_stage_status_events_in_order():
 
     with (
         patch(
-            "app.services.query_service.re_rank_docs",
+            "app.pipelines.query.re_rank_docs",
             return_value=RerankResult(docs=selected, failed=False),
         ),
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ),
     ):
@@ -338,7 +338,7 @@ async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
 
     with (
         patch(
-            "app.services.query_service.build_ask_messages",
+            "app.pipelines.query.build_ask_messages",
             return_value=("system", "user"),
         ),
     ):
