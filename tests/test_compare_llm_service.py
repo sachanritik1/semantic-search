@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.compare_llm_service import (
+from app.services.compare_pipeline import (
     _COMPARE_SYSTEM_PROMPT,
     _build_compare_messages,
     _build_compare_prompt,

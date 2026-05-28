@@ -5,6 +5,7 @@ from fastapi import Depends
 from app.config import settings
 from app.llm.factory import get_llm
 from app.services.compare_llm_service import CompareLLMService
+from app.services.compare_pipeline import ComparePipeline, LLMScorer, Retriever
 from app.services.compare_service import CompareService
 from app.services.ingest_service import IngestService
 from app.services.llm_service import LLMService
@@ -71,4 +72,13 @@ def get_compare_llm_service(
     return CompareLLMService(
         compare_service=compare_service,
         llm_service=llm_service,
+    )
+
+
+def get_compare_pipeline(
+    llm_service: LLMService = Depends(get_llm_service),
+) -> ComparePipeline:
+    return ComparePipeline(
+        retriever=Retriever(),
+        llm_scorer=LLMScorer(llm_service=llm_service),
     )
