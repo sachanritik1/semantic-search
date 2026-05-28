@@ -57,6 +57,8 @@ def get_query_service(
         llm_service=llm_service,
         query_enhancer=query_enhancer,
         semantic_cache=_get_semantic_cache(),
+        retrieval_top_k=settings.RETRIEVAL_TOP_K,
+        rerank_top_k=settings.RERANK_TOP_K,
     )
 
 

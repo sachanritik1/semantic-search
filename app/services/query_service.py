@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from langchain_core.documents import Document
 from langfuse import get_client, observe
 
-from app.config import settings
 from app.db.weaviate_store import document_has_chunks, hybrid_search
 from app.services.embedder import get_embeddings
 from app.services.llm_service import LLMService
@@ -36,11 +35,16 @@ class QueryService:
         llm_service: LLMService,
         query_enhancer: QueryEnhancer,
         semantic_cache: SemanticAskCache | None = None,
+        *,
+        retrieval_top_k: int = 10,
+        rerank_top_k: int = 8,
     ):
         self.llm_service = llm_service
         self.query_enhancer = query_enhancer
         self.semantic_cache = semantic_cache
         self._embeddings = get_embeddings()
+        self._retrieval_top_k = retrieval_top_k
+        self._rerank_top_k = rerank_top_k
 
     def _cache_lookup(self, question: str, document_id: str) -> dict | None:
         if not self.semantic_cache:
@@ -78,7 +82,7 @@ class QueryService:
                 q,
                 query_embedding,
                 document_id=document_id,
-                limit=settings.RETRIEVAL_TOP_K,
+                limit=self._retrieval_top_k,
             )
             for doc, score in results:
                 key = doc.metadata.get("chunk_id", doc.page_content)
@@ -86,7 +90,7 @@ class QueryService:
                     all_hits[key] = (doc, score)
 
         fused = [doc for doc, _ in sorted(all_hits.values(), key=lambda x: x[1], reverse=True)]
-        return fused[:settings.RETRIEVAL_TOP_K]
+        return fused[:self._retrieval_top_k]
 
     def _rerank(
         self,
@@ -96,7 +100,7 @@ class QueryService:
         rerank_result = re_rank_docs(
             question,
             fused,
-            top_n=settings.RERANK_TOP_K,
+            top_n=self._rerank_top_k,
         )
         if rerank_result.failed:
             logger.warning(
