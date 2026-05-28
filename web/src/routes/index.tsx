@@ -63,7 +63,7 @@ function HomePage() {
 					{health.isLoading ? (
 						<Badge variant="secondary">Checking…</Badge>
 					) : apiOk ? (
-						<Badge variant="success">Reachable</Badge>
+						<Badge variant="default">Reachable</Badge>
 					) : (
 						<Badge variant="destructive">
 							{health.error instanceof Error

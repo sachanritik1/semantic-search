@@ -14,10 +14,7 @@ export class ApiError extends Error {
 }
 
 export function getApiBase(): string {
-	if (import.meta.env.DEV) {
-		return "/api";
-	}
-	return env.VITE_API_URL ?? "http://127.0.0.1:8000";
+	return env.VITE_API_URL;
 }
 
 function formatDetail(body: ApiErrorBody | null): string {
