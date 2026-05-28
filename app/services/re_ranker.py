@@ -111,7 +111,7 @@ def _trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
         "query": inputs.get("query"),
         "top_n": inputs.get("top_n"),
         "candidate_count": len(docs),
-        "min_relevance": settings.RERANK_MIN_RELEVANCE,
+        "min_relevance": inputs.get("min_relevance", settings.RERANK_MIN_RELEVANCE),
         "model": settings.RERANK_MODEL_NAME,
         "input_docs": _docs_to_trace_list(docs),
     }
@@ -266,9 +266,11 @@ def re_rank_docs(
     query: str,
     docs: list[Document],
     top_n: int = 5,
+    min_relevance: float | None = None,
 ) -> RerankResult:
+    _min_relevance = min_relevance if min_relevance is not None else settings.RERANK_MIN_RELEVANCE
     get_client().update_current_span(
-        input=_trace_inputs({"query": query, "docs": docs, "top_n": top_n})
+        input=_trace_inputs({"query": query, "docs": docs, "top_n": top_n, "min_relevance": _min_relevance})
     )
     if not docs:
         logger.warning("Rerank skipped: no candidates")
@@ -282,12 +284,12 @@ def re_rank_docs(
                 ranked=[],
                 status="skipped",
                 top_n=top_n,
-                min_relevance=settings.RERANK_MIN_RELEVANCE,
+                min_relevance=_min_relevance,
             )
         )
         return RerankResult(docs=[], failed=False)
 
-    min_relevance = settings.RERANK_MIN_RELEVANCE
+    min_relevance = _min_relevance
     logger.info(
         "Reranking %d candidates (top_n=%d, min_relevance=%.1f)",
         len(docs),
