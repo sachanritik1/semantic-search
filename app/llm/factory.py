@@ -2,6 +2,7 @@
 
 from app.config import settings
 from app.llm.base import BaseLLM
+from app.llm.decorators import CostTrackingLLM, TracingLLM
 from app.llm.openai_llm import OpenaiLLM
 from app.llm.gemini_llm import GeminiLLM
 from app.llm.openrouter_llm import OpenRouterLLM
@@ -11,21 +12,23 @@ def get_llm() -> BaseLLM:
     provider = settings.LLM_PROVIDER.lower()
 
     if provider == "openai":
-        return OpenaiLLM(
+        raw = OpenaiLLM(
             api_key=settings.OPENAI_API_KEY,
             model=settings.OPENAI_MODEL,
         )
-
-    if provider == "gemini":
-        return GeminiLLM(
+    elif provider == "gemini":
+        raw = GeminiLLM(
             api_key=settings.GEMINI_API_KEY,
             model=settings.GEMINI_MODEL,
         )
-
-    if provider == "openrouter":
-        return OpenRouterLLM(
+    elif provider == "openrouter":
+        raw = OpenRouterLLM(
             api_key=settings.OPENROUTER_API_KEY,
             model=settings.OPENROUTER_MODEL,
         )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    raise ValueError(f"Unsupported LLM provider: {provider}")
+    stack = CostTrackingLLM(raw)
+    stack = TracingLLM(stack)
+    return stack
