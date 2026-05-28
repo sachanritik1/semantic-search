@@ -3,8 +3,7 @@ import logging
 import numpy as np
 from langchain_core.embeddings import Embeddings
 
-from app.db import ask_cache_store
-from app.db.ask_cache_store import AskCacheRow
+from app.db.ask_cache_store import AskCacheRow, AskCacheStore
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +29,13 @@ class SemanticAskCache:
         self,
         embeddings: Embeddings,
         *,
+        cache_store: AskCacheStore | None = None,
         enabled: bool = True,
         threshold: float = 0.92,
         ttl_seconds: int = 3600,
     ) -> None:
         self._embeddings = embeddings
+        self._cache_store = cache_store or AskCacheStore()
         self._enabled = enabled
         self._threshold = threshold
         self._ttl_seconds = ttl_seconds
@@ -43,9 +44,9 @@ class SemanticAskCache:
         if not self._enabled:
             return None
 
-        now = ask_cache_store.utc_now()
+        now = self._cache_store._utc_now()
         normalized = _normalize_question(question)
-        live = ask_cache_store.list_rows(
+        live = self._cache_store.list_rows(
             document_id=document_id,
             ttl_seconds=self._ttl_seconds,
             now=now,
@@ -94,14 +95,14 @@ class SemanticAskCache:
 
         embedding = _normalize_vector(self._embeddings.embed_query(question))
         vector = embedding.tolist()
-        ask_cache_store.insert_row(
+        self._cache_store.insert(
             document_id=document_id,
             original_question=result["original_question"],
             enhanced_question=result["enhanced_question"],
             response=result["response"],
             embedding=vector,
         )
-        ask_cache_store.prune_expired(self._ttl_seconds)
+        self._cache_store.prune_expired(self._ttl_seconds)
 
     @staticmethod
     def _to_result(row: AskCacheRow) -> dict:
