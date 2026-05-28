@@ -2,7 +2,7 @@ import logging
 from unittest.mock import MagicMock
 
 from app.llm.base import LLMResponse
-from app.services.llm_service import LLMService
+from app.llm.decorators import CostTrackingLLM
 from app.utils.llm_usage import annotate_cost, log_llm_usage
 
 
@@ -62,7 +62,7 @@ def test_log_llm_usage_emits_cost(caplog):
     assert any("cached_tokens=800" in m for m in messages)
 
 
-def test_llm_service_attaches_cost_to_response_usage():
+def test_cost_tracking_llm_attaches_cost_to_response_usage():
     mock_llm = MagicMock()
     mock_llm.generate.return_value = LLMResponse(
         content="hi",
@@ -70,8 +70,8 @@ def test_llm_service_attaches_cost_to_response_usage():
         usage={"input_tokens": 1000, "output_tokens": 500, "cached_tokens": 800},
     )
 
-    service = LLMService(mock_llm)
-    response = service.generate_text("prompt")
+    llm = CostTrackingLLM(mock_llm)
+    response = llm.generate("prompt")
 
     assert response.usage is not None
     assert "cost" in response.usage
