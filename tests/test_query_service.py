@@ -9,6 +9,12 @@ from app.services.re_ranker import RerankResult
 from app.services.semantic_cache import SemanticAskCache
 
 
+def _make_mock_retriever(return_value=None):
+    m = MagicMock()
+    m.retrieve.return_value = return_value or []
+    return m
+
+
 @pytest.mark.asyncio
 async def test_ask_uses_only_reranked_docs_on_success():
     fused = [
@@ -28,17 +34,14 @@ async def test_ask_uses_only_reranked_docs_on_success():
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1", "q2", "q3"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+    retriever = _make_mock_retriever(return_value=[(fused[0], 0.9), (fused[1], 0.5)])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[MagicMock()],
-        ),
-        patch(
-            "app.services.query_service.hybrid_search",
-            return_value=[(fused[0], 0.9), (fused[1], 0.5)],
-        ),
         patch(
             "app.services.query_service.re_rank_docs",
             return_value=RerankResult(docs=selected, failed=False),
@@ -75,17 +78,14 @@ async def test_ask_uses_all_fused_on_rerank_failure():
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1", "q2", "q3"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+    retriever = _make_mock_retriever(return_value=[(fused[0], 0.9), (fused[1], 0.5)])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[MagicMock()],
-        ),
-        patch(
-            "app.services.query_service.hybrid_search",
-            return_value=[(fused[0], 0.9), (fused[1], 0.5)],
-        ),
         patch(
             "app.services.query_service.re_rank_docs",
             return_value=RerankResult(docs=[], failed=True),
@@ -101,31 +101,23 @@ async def test_ask_uses_all_fused_on_rerank_failure():
 
 
 @pytest.mark.asyncio
-async def test_ask_passes_each_query_to_hybrid_search():
+async def test_ask_passes_each_query_to_retriever():
     llm = MagicMock()
     llm.generate_text.return_value = MagicMock(content="answer")
 
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1", "q2", "q3"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+    fake_doc = Document(page_content="test", metadata={"chunk_id": "c1"})
+    retriever = _make_mock_retriever(return_value=[(fake_doc, 0.95)])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
     document_id = "doc-123"
 
-    chunks = [MagicMock() for _ in range(3)]
-    for i, c in enumerate(chunks):
-        c.content = f"content {i}"
-
-    fake_doc = Document(page_content="test", metadata={"chunk_id": "c1"})
-
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=chunks,
-        ),
-        patch(
-            "app.services.query_service.hybrid_search",
-            return_value=[(fake_doc, 0.95)],
-        ) as mock_hybrid,
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -133,8 +125,8 @@ async def test_ask_passes_each_query_to_hybrid_search():
     ):
         await service.ask("question?", document_id=document_id)
 
-    assert mock_hybrid.call_count == 3
-    for call in mock_hybrid.call_args_list:
+    assert retriever.retrieve.call_count == 3
+    for call in retriever.retrieve.call_args_list:
         assert call.kwargs["document_id"] == document_id
 
 
@@ -146,16 +138,14 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1", "q2", "q3"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+    retriever = _make_mock_retriever(return_value=[])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[],
-        ),
-        patch(
-            "app.services.query_service.hybrid_search",
-        ) as mock_hybrid,
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -163,7 +153,7 @@ async def test_ask_returns_early_when_scoped_document_has_no_chunks():
     ):
         result = await service.ask("question?", document_id="missing-doc")
 
-    mock_hybrid.assert_not_called()
+    assert retriever.retrieve.call_count == 1
     build_ask_messages.assert_called_once_with(docs=[], question="question?")
     assert result["response"] == "no context answer"
     assert result["enhanced_questions"] == ["q1", "q2", "q3"]
@@ -182,17 +172,15 @@ async def test_ask_returns_cache_hit_on_repeat_question():
     embeddings.embed_query.return_value = [1.0, 0.0]
     cache = SemanticAskCache(embeddings, threshold=0.99, ttl_seconds=3600)
 
+    retriever = _make_mock_retriever(return_value=[])
     service = QueryService(
         llm_service=llm,
         query_enhancer=enhancer,
         semantic_cache=cache,
+        retriever=retriever,
     )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[],
-        ),
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -229,17 +217,15 @@ async def test_stream_ask_persists_cache_when_consumer_disconnects_mid_stream():
     embeddings.embed_query.return_value = [1.0, 0.0]
     cache = SemanticAskCache(embeddings, threshold=0.99, ttl_seconds=3600)
 
+    retriever = _make_mock_retriever(return_value=[])
     service = QueryService(
         llm_service=llm,
         query_enhancer=enhancer,
         semantic_cache=cache,
+        retriever=retriever,
     )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[],
-        ),
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),
@@ -287,22 +273,19 @@ async def test_stream_ask_emits_stage_status_events_in_order():
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1", "q2"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
-
     fused = [Document(page_content="a", metadata={"chunk_id": "1"})]
     selected = [
         Document(page_content="a", metadata={"chunk_id": "1", "rerank_score": 9}),
     ]
 
+    retriever = _make_mock_retriever(return_value=[(fused[0], 0.9)])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
+
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[MagicMock()],
-        ),
-        patch(
-            "app.services.query_service.hybrid_search",
-            return_value=[(fused[0], 0.9)],
-        ),
         patch(
             "app.services.query_service.re_rank_docs",
             return_value=RerankResult(docs=selected, failed=False),
@@ -346,13 +329,14 @@ async def test_stream_ask_skips_reranking_stage_when_no_fused_docs():
     enhancer = MagicMock()
     enhancer.enhance.return_value = ["q1"]
 
-    service = QueryService(llm_service=llm, query_enhancer=enhancer)
+    retriever = _make_mock_retriever(return_value=[])
+    service = QueryService(
+        llm_service=llm,
+        query_enhancer=enhancer,
+        retriever=retriever,
+    )
 
     with (
-        patch(
-            "app.services.query_service.document_has_chunks",
-            return_value=[],
-        ),
         patch(
             "app.services.query_service.build_ask_messages",
             return_value=("system", "user"),

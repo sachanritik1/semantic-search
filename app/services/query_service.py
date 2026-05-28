@@ -7,11 +7,10 @@ from langchain_core.documents import Document
 from langfuse import get_client, observe
 
 from app.config import settings
-from app.db.weaviate_store import document_has_chunks, hybrid_search
-from app.services.embedder import get_embeddings
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import QueryEnhancer
 from app.services.re_ranker import re_rank_docs
+from app.services.retrieval import HybridRetriever, Retriever
 from app.services.semantic_cache import SemanticAskCache
 from app.utils.prompt_cache import cache_key
 from app.utils.prompts import build_ask_messages
@@ -36,11 +35,12 @@ class QueryService:
         llm_service: LLMService,
         query_enhancer: QueryEnhancer,
         semantic_cache: SemanticAskCache | None = None,
+        retriever: Retriever | None = None,
     ):
         self.llm_service = llm_service
         self.query_enhancer = query_enhancer
         self.semantic_cache = semantic_cache
-        self._embeddings = get_embeddings()
+        self._retriever = retriever or HybridRetriever()
 
     def _cache_lookup(self, question: str, document_id: str) -> dict | None:
         if not self.semantic_cache:
@@ -63,30 +63,25 @@ class QueryService:
         queries: list[str],
         document_id: str,
     ) -> list[Document]:
-        if not document_has_chunks(document_id):
-            logger.info(
-                "No chunks found for document_id=%s; answering without retrieval context",
-                document_id,
-            )
-            return []
-
-        all_hits: dict[str, tuple[Document, float]] = {}
-
+        fused = []
         for q in queries:
-            query_embedding = self._embeddings.embed_query(q)
-            results = hybrid_search(
-                q,
-                query_embedding,
+            results = self._retriever.retrieve(
+                [q],
                 document_id=document_id,
                 limit=settings.RETRIEVAL_TOP_K,
             )
-            for doc, score in results:
-                key = doc.metadata.get("chunk_id", doc.page_content)
-                if key not in all_hits or score > all_hits[key][1]:
-                    all_hits[key] = (doc, score)
+            fused.extend(results)
 
-        fused = [doc for doc, _ in sorted(all_hits.values(), key=lambda x: x[1], reverse=True)]
-        return fused[:settings.RETRIEVAL_TOP_K]
+        # Deduplicate by chunk_id, keeping the best score
+        all_hits: dict[str, tuple[Document, float]] = {}
+        for doc, score in fused:
+            key = doc.metadata.get("chunk_id", doc.page_content)
+            if key not in all_hits or score > all_hits[key][1]:
+                all_hits[key] = (doc, score)
+
+        return [
+            doc for doc, _ in sorted(all_hits.values(), key=lambda x: x[1], reverse=True)
+        ][:settings.RETRIEVAL_TOP_K]
 
     def _rerank(
         self,
